@@ -394,6 +394,7 @@ function updateDragon(state: GameState) {
         fuse: 45,
         exploded: false,
       };
+      state.keys["e"] = false;
     }
   }
 }
