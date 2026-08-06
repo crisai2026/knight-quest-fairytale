@@ -170,7 +170,10 @@ export function GameCanvas() {
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          className="block"
+          className="block cursor-pointer"
+          onClick={() => {
+            stateRef.current.started = true;
+          }}
           style={{
             width: CANVAS_WIDTH * scale,
             height: CANVAS_HEIGHT * scale,
