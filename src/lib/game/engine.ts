@@ -389,9 +389,9 @@ function updateDragon(state: GameState) {
       state.tnt = {
         x: p.x + p.width / 2,
         y: p.y + p.height / 2,
-        vx: p.facing === "right" ? 6 : -6,
+        vx: p.facing === "right" ? 9 : -9,
         vy: -6,
-        fuse: 45,
+        fuse: 55,
         exploded: false,
       };
       state.keys["e"] = false;
