@@ -1,5 +1,9 @@
 export type GameMode = "playing" | "cutscene" | "gameover" | "won";
 
+export type Weapon = "sword" | "bow";
+
+export type Biome = "sunny" | "scary" | "lava" | "castle";
+
 export type GameState = {
   mode: GameMode;
   cameraX: number;
@@ -8,14 +12,20 @@ export type GameState = {
   chests: Chest[];
   platforms: Platform[];
   particles: Particle[];
+  arrows: Arrow[];
+  pails: Pail[];
   dragon: Dragon | null;
-  tnt: TNT | null;
+  tntList: TNT[];
+  keyDrop: KeyDrop | null;
+  cage: Cage;
   message: string;
   messageTimer: number;
   cutsceneTimer: number;
   cutscenePhase: number;
   keys: Record<string, boolean>;
   started: boolean;
+  biome: Biome;
+  biomeLabelTimer: number;
 };
 
 export type Player = {
@@ -35,11 +45,19 @@ export type Player = {
   attackTimer: number;
   attackCooldown: number;
   invulnerable: number;
+  weapon: Weapon;
+  arrowsLeft: number;
+  tnt: number;
+  hasKey: boolean;
 };
 
+export type EnemyKind = "furry" | "tentacle" | "winged";
+
 export type Enemy = {
+  kind: EnemyKind;
   x: number;
   y: number;
+  baseY: number;
   width: number;
   height: number;
   vx: number;
@@ -47,9 +65,10 @@ export type Enemy = {
   patrolStart: number;
   patrolEnd: number;
   flash: number;
+  wobble: number;
 };
 
-export type ChestItem = "bandage" | "firstaid" | "food";
+export type ChestItem = "bandage" | "firstaid" | "food" | "arrows";
 
 export type Chest = {
   x: number;
@@ -79,7 +98,37 @@ export type Particle = {
   size: number;
 };
 
-export type DragonState = "flying" | "breathing" | "landing" | "resting" | "taking_off";
+export type Arrow = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+};
+
+export type Pail = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type KeyDrop = {
+  x: number;
+  y: number;
+  vy: number;
+  collected: boolean;
+};
+
+export type Cage = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  open: boolean;
+};
+
+export type DragonState = "flying" | "landing" | "resting" | "taking_off";
 
 export type Dragon = {
   x: number;
@@ -93,6 +142,7 @@ export type Dragon = {
   fireballs: Fireball[];
   restCount: number;
   flash: number;
+  dir: number;
 };
 
 export type Fireball = {

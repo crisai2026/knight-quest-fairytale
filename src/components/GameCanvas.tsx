@@ -43,6 +43,14 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "#ffffff";
   ctx.fillText("Hunger", barX + barW + 8, barY + 10);
 
+  const infoY = barY + barH + 18;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(
+    `Weapon: ${p.weapon === "sword" ? "Sword" : "Bow"} (R)   Arrows: ${p.arrowsLeft}   TNT: ${p.tnt}${p.hasKey ? "   Key: yes" : ""}`,
+    barX,
+    infoY
+  );
+
   if (state.dragon) {
     const dx = CANVAS_WIDTH - pad - 160;
     const dy = pad;
@@ -53,8 +61,9 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.strokeStyle = "#9ca3af";
     ctx.strokeRect(dx, dy, 150, 16);
     ctx.fillStyle = "#ffffff";
-    ctx.fillText("Dragon", dx, dy + 30);
+    ctx.fillText(`Dragon ${state.dragon.health}/${state.dragon.maxHealth}`, dx, dy + 30);
   }
+
 
   if (state.message) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
@@ -131,6 +140,7 @@ export function GameCanvas() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
+    
     const loop = () => {
       updateGame(stateRef.current);
       renderGame(ctx, stateRef.current);
@@ -182,7 +192,9 @@ export function GameCanvas() {
         />
       </div>
       <p className="mt-4 max-w-2xl text-center text-sm text-slate-400">
-        A/D or Arrow keys to walk, Shift to sprint, Space to jump, F to swing your sword, E to open chests and throw TNT at the resting dragon.
+        A/D or Arrows to walk, Shift to sprint, Space to jump, R to switch between sword and bow, F to attack, E to open
+        chests, take TNT from a pail, grab the dragon's key and unlock the princess's cage.
+
       </p>
     </div>
   );
