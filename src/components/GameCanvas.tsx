@@ -118,6 +118,9 @@ export function GameCanvas() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Expose state for debugging/testing
+    (window as unknown as { __gameState__: GameState }).__gameState__ = stateRef.current;
+
     const onKeyDown = (e: KeyboardEvent) => {
       handleKeyDown(stateRef.current, e.key.toLowerCase());
       if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) {
