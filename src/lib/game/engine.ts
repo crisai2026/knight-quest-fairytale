@@ -176,6 +176,7 @@ function updatePlayer(state: GameState) {
   if (keys[" "] && p.onGround) {
     p.vy = JUMP_FORCE;
     p.onGround = false;
+    keys[" "] = false;
   }
 
   if (keys["f"] && p.attackCooldown <= 0 && !p.attacking) {
