@@ -140,6 +140,7 @@ export function GameCanvas() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
+    (window as any).__gs = stateRef.current;
     const loop = () => {
       updateGame(stateRef.current);
       renderGame(ctx, stateRef.current);
