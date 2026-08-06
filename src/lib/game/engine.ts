@@ -403,7 +403,7 @@ function updateTNT(state: GameState) {
   t.y += t.vy;
   t.fuse--;
 
-  if (d && !t.exploded && rectsOverlap(t, d)) {
+  if (d && !t.exploded && rectsOverlap({ x: t.x, y: t.y, width: 12, height: 12 }, d)) {
     t.fuse = 0;
   }
 
