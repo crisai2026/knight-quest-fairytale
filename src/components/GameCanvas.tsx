@@ -191,7 +191,9 @@ export function GameCanvas() {
         />
       </div>
       <p className="mt-4 max-w-2xl text-center text-sm text-slate-400">
-        A/D or Arrow keys to walk, Shift to sprint, Space to jump, F to swing your sword, E to open chests and throw TNT at the resting dragon.
+        A/D or Arrows to walk, Shift to sprint, Space to jump, R to switch between sword and bow, F to attack, E to open
+        chests, take TNT from a pail, grab the dragon's key and unlock the princess's cage.
+
       </p>
     </div>
   );
