@@ -573,7 +573,8 @@ function drawChest(ctx: CanvasRenderingContext2D, chest: Chest, cameraX: number)
   const y = chest.y;
   ctx.fillStyle = chest.opened ? "#78350f" : "#b45309";
   ctx.fillRect(x, y, chest.width, chest.height);
-  ctx.fillStyle = "#f59e0b";
+  ctx.strokeStyle = "#f59e0b";
+  ctx.lineWidth = 2;
   ctx.strokeRect(x + 4, y + 4, chest.width - 8, chest.height - 8);
   if (!chest.opened) {
     ctx.fillStyle = "#fef3c7";
