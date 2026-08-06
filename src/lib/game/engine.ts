@@ -277,6 +277,7 @@ function updateChests(state: GameState) {
 
   if (!state.keys["e"]) return;
 
+  let opened = false;
   for (const chest of state.chests) {
     if (chest.opened) continue;
     const dx = p.x + p.width / 2 - (chest.x + chest.width / 2);
@@ -284,6 +285,7 @@ function updateChests(state: GameState) {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < 60) {
       chest.opened = true;
+      opened = true;
       spawnParticle(state, chest.x + chest.width / 2, chest.y + chest.height / 2, "#eab308", 8, 3);
       if (chest.item === "bandage") {
         p.health = Math.min(p.maxHealth, p.health + 2.5);
@@ -297,6 +299,8 @@ function updateChests(state: GameState) {
       }
     }
   }
+
+  if (opened) state.keys["e"] = false;
 }
 
 function updateDragon(state: GameState) {
