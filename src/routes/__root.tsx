@@ -77,14 +77,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Knight & Princess — 2D Platformer" },
+      { name: "description", content: "Help the knight save the princess from the dragon in this browser platformer prototype." },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Knight & Princess — 2D Platformer" },
+      { property: "og:description", content: "Help the knight save the princess from the dragon in this browser platformer prototype." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Knight & Princess — 2D Platformer" },
+      { name: "twitter:description", content: "Help the knight save the princess from the dragon in this browser platformer prototype." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/53ef51223f67a1c4af31d3248f2dda58/id-preview-203a1d60--bceb4f4b-5374-41fa-98c9-4f965ed9fb2a.lovable.app-1786055512817.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/53ef51223f67a1c4af31d3248f2dda58/id-preview-203a1d60--bceb4f4b-5374-41fa-98c9-4f965ed9fb2a.lovable.app-1786055512817.png" },
     ],
     links: [
       {
