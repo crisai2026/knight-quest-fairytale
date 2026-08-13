@@ -459,7 +459,7 @@ function updatePlayer(state: GameState) {
   }
 
   // Level exit
-  if (p.x + p.width >= state.exitX) {
+  if (atExit) {
     if (state.levelIndex === VILLAGE_LEVEL_INDEX && !state.villageFree) {
       state.mode = "cutscene";
       state.cutsceneTimer = 0;
