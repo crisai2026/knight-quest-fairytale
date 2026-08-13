@@ -104,7 +104,7 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(text, (CANVAS_WIDTH - textWidth) / 2, CANVAS_HEIGHT / 2);
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px sans-serif";
-    const hint = "Refresh to play again";
+    const hint = "Press Enter to play again";
     const hintWidth = ctx.measureText(hint).width;
     ctx.fillText(hint, (CANVAS_WIDTH - hintWidth) / 2, CANVAS_HEIGHT / 2 + 40);
   }
@@ -117,7 +117,12 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     const text = "Game Over";
     const textWidth = ctx.measureText(text).width;
     ctx.fillText(text, (CANVAS_WIDTH - textWidth) / 2, CANVAS_HEIGHT / 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "16px sans-serif";
+    const hint = `Press Enter to retry ${state.levelName}`;
+    ctx.fillText(hint, (CANVAS_WIDTH - ctx.measureText(hint).width) / 2, CANVAS_HEIGHT / 2 + 40);
   }
+
 }
 
 export function GameCanvas() {
