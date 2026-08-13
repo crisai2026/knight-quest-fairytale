@@ -192,8 +192,9 @@ export function GameCanvas() {
 
   useEffect(() => {
     const resize = () => {
+      const touch = window.matchMedia("(pointer: coarse)").matches;
       const maxWidth = Math.min(window.innerWidth - 16, 1120);
-      const maxHeight = window.innerHeight - 16;
+      const maxHeight = window.innerHeight - 16 - (touch ? 100 : 0);
       setScale(Math.min(maxWidth / CANVAS_WIDTH, maxHeight / CANVAS_HEIGHT));
       setPortrait(window.innerHeight > window.innerWidth);
     };
