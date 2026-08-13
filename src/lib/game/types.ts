@@ -1,12 +1,29 @@
-export type GameMode = "playing" | "cutscene" | "gameover" | "won";
+export type GameMode = "playing" | "levelcomplete" | "cutscene" | "gameover" | "won";
 
 export type Weapon = "sword" | "bow";
 
-export type Biome = "sunny" | "scary" | "lava" | "castle";
+export type Biome =
+  | "sunny"
+  | "night"
+  | "beach"
+  | "ocean"
+  | "village"
+  | "desert"
+  | "snow"
+  | "dark"
+  | "fire"
+  | "castle";
 
 export type GameState = {
   mode: GameMode;
   cameraX: number;
+  levelIndex: number;
+  levelName: string;
+  worldWidth: number;
+  exitX: number;
+  swim: boolean;
+  levelBanner: number;
+  levelCompleteTimer: number;
   player: Player;
   enemies: Enemy[];
   chests: Chest[];
@@ -17,15 +34,17 @@ export type GameState = {
   dragon: Dragon | null;
   tntList: TNT[];
   keyDrop: KeyDrop | null;
-  cage: Cage;
+  cage: Cage | null;
   message: string;
   messageTimer: number;
   cutsceneTimer: number;
   cutscenePhase: number;
+  castleCutsceneDone: boolean;
   keys: Record<string, boolean>;
   started: boolean;
   biome: Biome;
   biomeLabelTimer: number;
+  owlTimer: number;
 };
 
 export type Player = {
@@ -46,12 +65,13 @@ export type Player = {
   attackCooldown: number;
   invulnerable: number;
   weapon: Weapon;
+  hasBow: boolean;
   arrowsLeft: number;
   tnt: number;
   hasKey: boolean;
 };
 
-export type EnemyKind = "furry" | "tentacle" | "winged";
+export type EnemyKind = "furry" | "tentacle" | "winged" | "fish" | "insect";
 
 export type Enemy = {
   kind: EnemyKind;
@@ -61,6 +81,7 @@ export type Enemy = {
   width: number;
   height: number;
   vx: number;
+  vy: number;
   health: number;
   patrolStart: number;
   patrolEnd: number;
