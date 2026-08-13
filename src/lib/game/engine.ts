@@ -418,7 +418,8 @@ function updatePlayer(state: GameState) {
   }
 
   // Village hub: villagers, shop and the exit gate
-  if (state.levelIndex === VILLAGE_LEVEL_INDEX && state.villageFree) {
+  const atExit = p.x + p.width >= state.exitX;
+  if (state.levelIndex === VILLAGE_LEVEL_INDEX && state.villageFree && !atExit) {
     updateNpcs(state);
     if (state.mode !== "playing") return;
   }
