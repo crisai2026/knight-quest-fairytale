@@ -7,7 +7,6 @@ import {
   handleKeyUp,
   renderGame,
   updateGame,
-  goToLevel,
 } from "@/lib/game/engine";
 import { isMusicEnabled, setMusicEnabled, unlockAudio } from "@/lib/game/audio";
 import type { GameState } from "@/lib/game/types";
@@ -183,8 +182,6 @@ export function GameCanvas() {
       rafRef.current = requestAnimationFrame(loop);
     };
 
-    (window as any).__gs = stateRef.current;
-    (window as any).__goto = (i: number) => goToLevel(stateRef.current, i);
     rafRef.current = requestAnimationFrame(loop);
 
     return () => {
