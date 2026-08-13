@@ -11,11 +11,22 @@ import type {
   Pail,
   Biome,
 } from "./types";
+import {
+  LEVELS,
+  GROUND_Y,
+  FINALE_LEVEL_INDEX,
+  BOW_LEVEL_INDEX,
+  CASTLE_TRIGGER_X,
+  DRAGON_ARENA_X,
+  CAGE_X,
+  type EnemySpawn,
+  type LevelDef,
+} from "./levels";
+import { playOwlHoot } from "./audio";
 
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
-export const WORLD_WIDTH = 6200;
-export const GROUND_Y = 520;
+export { GROUND_Y };
 export const GRAVITY = 0.6;
 export const WALK_SPEED = 4;
 export const SPRINT_SPEED = 7.5;
@@ -23,96 +34,45 @@ export const JUMP_FORCE = -12;
 export const PLAYER_WIDTH = 32;
 export const PLAYER_HEIGHT = 48;
 
-export const SCARY_START = 1800;
-export const LAVA_START = 3300;
-export const CASTLE_START = 4600;
-export const DRAGON_ARENA_X = 4900;
-export const CAGE_X = 5700;
+const SWIM_GRAVITY = 0.14;
+const SWIM_SPEED = 3.2;
 
-const GROUND: Platform = { x: 0, y: GROUND_Y, width: WORLD_WIDTH, height: 80 };
+const BIOME_NAMES: Record<Biome, string> = {
+  sunny: "Sunny Forest",
+  night: "Night Forest",
+  beach: "Sunny Beach",
+  ocean: "The Deep Ocean",
+  village: "The Village",
+  desert: "Burning Desert",
+  snow: "Frozen Wastes",
+  dark: "Creepy Forest",
+  fire: "Fire Landscape",
+  castle: "The Dragon's Castle",
+};
 
-const PLATFORMS: Platform[] = [
-  { x: 280, y: 430, width: 160, height: 20 },
-  { x: 560, y: 360, width: 140, height: 20 },
-  { x: 820, y: 430, width: 180, height: 20 },
-  { x: 1120, y: 340, width: 120, height: 20 },
-  { x: 1380, y: 400, width: 160, height: 20 },
-  { x: 1660, y: 320, width: 140, height: 20 },
-  { x: 1980, y: 420, width: 170, height: 20 },
-  { x: 2280, y: 350, width: 140, height: 20 },
-  { x: 2600, y: 420, width: 160, height: 20 },
-  { x: 2950, y: 330, width: 140, height: 20 },
-  { x: 3450, y: 420, width: 150, height: 20 },
-  { x: 3750, y: 350, width: 140, height: 20 },
-  { x: 4080, y: 420, width: 160, height: 20 },
-  { x: 4380, y: 340, width: 140, height: 20 },
-  { x: 4750, y: 420, width: 150, height: 20 },
-];
-
-function enemy(
-  kind: Enemy["kind"],
-  x: number,
-  patrolStart: number,
-  patrolEnd: number,
-  opts: { y?: number; health?: number; vx?: number } = {}
-): Enemy {
+function makeEnemy(spawn: EnemySpawn): Enemy {
+  const { kind } = spawn;
   const flying = kind === "winged";
-  const width = kind === "tentacle" ? 44 : 40;
-  const height = flying ? 34 : 42;
-  const baseY = opts.y ?? (flying ? 300 : GROUND_Y - height);
+  const swimming = kind === "fish";
+  const width = kind === "tentacle" ? 44 : kind === "insect" ? 38 : kind === "fish" ? 46 : 40;
+  const height = flying ? 34 : kind === "fish" ? 28 : kind === "insect" ? 30 : 42;
+  const baseY = spawn.y ?? (flying ? 300 : GROUND_Y - height);
   return {
     kind,
-    x,
+    x: spawn.x,
     y: baseY,
     baseY,
     width,
     height,
-    vx: opts.vx ?? (flying ? 2 : 1.3),
-    health: opts.health ?? (kind === "furry" ? 2 : kind === "tentacle" ? 3 : 2),
-    patrolStart,
-    patrolEnd,
+    vx: flying ? 2 : swimming ? 1.8 : kind === "insect" ? 2.6 : 1.3,
+    vy: 0,
+    health: kind === "tentacle" ? 3 : kind === "fish" ? 2 : kind === "insect" ? 1 : 2,
+    patrolStart: spawn.patrolStart,
+    patrolEnd: spawn.patrolEnd,
     flash: 0,
     wobble: Math.random() * Math.PI * 2,
   };
 }
-
-const ENEMIES: Enemy[] = [
-  // Sunny forest
-  enemy("furry", 420, 360, 600),
-  enemy("furry", 900, 840, 1040),
-  enemy("winged", 1150, 1080, 1400, { y: 300 }),
-  enemy("furry", 1560, 1500, 1720),
-  // Scary forest
-  enemy("tentacle", 2000, 1940, 2180),
-  enemy("winged", 2350, 2250, 2600, { y: 280 }),
-  enemy("tentacle", 2700, 2620, 2880),
-  enemy("furry", 3000, 2940, 3180),
-  enemy("winged", 3150, 3000, 3300, { y: 240 }),
-  // Lava land
-  enemy("tentacle", 3500, 3440, 3680),
-  enemy("winged", 3850, 3750, 4100, { y: 270 }),
-  enemy("furry", 4150, 4080, 4320),
-  enemy("tentacle", 4400, 4340, 4560),
-  enemy("winged", 4500, 4380, 4600, { y: 230 }),
-];
-
-const CHESTS: Chest[] = [
-  { x: 340, y: GROUND_Y - 20 - 24, width: 32, height: 24, opened: false, item: "bandage", label: "Bandage" },
-  { x: 620, y: GROUND_Y - 20 - 24, width: 32, height: 24, opened: false, item: "food", label: "Food" },
-  { x: 1160, y: GROUND_Y - 20 - 24, width: 32, height: 24, opened: false, item: "arrows", label: "Arrows" },
-  { x: 1700, y: GROUND_Y - 20 - 24, width: 32, height: 24, opened: false, item: "food", label: "Food" },
-  { x: 2200, y: GROUND_Y - 24, width: 32, height: 24, opened: false, item: "firstaid", label: "First Aid" },
-  { x: 2800, y: GROUND_Y - 24, width: 32, height: 24, opened: false, item: "arrows", label: "Arrows" },
-  { x: 3200, y: GROUND_Y - 24, width: 32, height: 24, opened: false, item: "food", label: "Food" },
-  { x: 3600, y: GROUND_Y - 24, width: 32, height: 24, opened: false, item: "bandage", label: "Bandage" },
-  { x: 4200, y: GROUND_Y - 24, width: 32, height: 24, opened: false, item: "arrows", label: "Arrows" },
-  { x: 4650, y: GROUND_Y - 24, width: 32, height: 24, opened: false, item: "firstaid", label: "First Aid" },
-];
-
-const PAILS: Pail[] = [
-  { x: DRAGON_ARENA_X - 120, y: GROUND_Y - 34, width: 34, height: 34 },
-  { x: DRAGON_ARENA_X + 380, y: GROUND_Y - 34, width: 34, height: 34 },
-];
 
 function createPlayer(): Player {
   return {
@@ -133,7 +93,8 @@ function createPlayer(): Player {
     attackCooldown: 0,
     invulnerable: 0,
     weapon: "sword",
-    arrowsLeft: 15,
+    hasBow: false,
+    arrowsLeft: 0,
     tnt: 0,
     hasKey: false,
   };
@@ -145,8 +106,8 @@ function createDragon(): Dragon {
     y: 170,
     width: 110,
     height: 70,
-    health: 20,
-    maxHealth: 20,
+    health: 50,
+    maxHealth: 50,
     state: "flying",
     timer: 0,
     fireballs: [],
@@ -156,30 +117,100 @@ function createDragon(): Dragon {
   };
 }
 
-export function createInitialState(): GameState {
+function levelPails(level: LevelDef): Pail[] {
+  if (!level.finale) return [];
+  return [
+    { x: DRAGON_ARENA_X - 160, y: GROUND_Y - 34, width: 34, height: 34 },
+    { x: DRAGON_ARENA_X + 180, y: GROUND_Y - 34, width: 34, height: 34 },
+    { x: DRAGON_ARENA_X + 520, y: GROUND_Y - 34, width: 34, height: 34 },
+  ];
+}
+
+/** Builds state for a level, carrying over the player's stats when given. */
+export function loadLevel(levelIndex: number, carry?: Player): GameState {
+  const level = LEVELS[levelIndex]!;
+  const player = carry ? { ...carry } : createPlayer();
+
+  player.x = 60;
+  player.y = GROUND_Y - PLAYER_HEIGHT;
+  player.vx = 0;
+  player.vy = 0;
+  player.facing = "right";
+  player.onGround = false;
+  player.attacking = false;
+  player.attackTimer = 0;
+  player.attackCooldown = 0;
+  player.invulnerable = 0;
+  player.tnt = 0;
+  player.hasKey = false;
+
+  if (levelIndex >= BOW_LEVEL_INDEX && !player.hasBow) {
+    player.hasBow = true;
+    player.arrowsLeft = Math.max(player.arrowsLeft, 20);
+  }
+  if (!player.hasBow) player.weapon = "sword";
+
   return {
     mode: "playing",
     cameraX: 0,
-    player: createPlayer(),
-    enemies: ENEMIES.map((e) => ({ ...e })),
-    chests: CHESTS.map((c) => ({ ...c })),
-    platforms: [GROUND, ...PLATFORMS.map((p) => ({ ...p }))],
+    levelIndex,
+    levelName: level.name,
+    worldWidth: level.width,
+    exitX: level.finale ? Number.POSITIVE_INFINITY : level.width - 120,
+    swim: level.swim === true,
+    levelBanner: 200,
+    levelCompleteTimer: 0,
+    player,
+    enemies: level.enemies.map(makeEnemy),
+    chests: level.chests.map((c: Chest) => ({ ...c })),
+    platforms: [
+      { x: 0, y: GROUND_Y, width: level.width, height: 80 },
+      ...level.platforms.map((p: Platform) => ({ ...p })),
+    ],
     particles: [],
     arrows: [],
-    pails: PAILS.map((p) => ({ ...p })),
+    pails: levelPails(level),
     dragon: null,
     tntList: [],
     keyDrop: null,
-    cage: { x: CAGE_X, y: GROUND_Y - 96, width: 80, height: 96, open: false },
+    cage: level.finale ? { x: CAGE_X, y: GROUND_Y - 96, width: 80, height: 96, open: false } : null,
     message: "",
     messageTimer: 0,
     cutsceneTimer: 0,
     cutscenePhase: 0,
+    castleCutsceneDone: false,
     keys: {},
     started: false,
-    biome: "sunny",
+    biome: level.biome,
     biomeLabelTimer: 0,
+    owlTimer: 0,
   };
+}
+
+export function createInitialState(): GameState {
+  return loadLevel(0);
+}
+
+/** Mutates `state` in place so the caller's ref keeps pointing at live state. */
+function replaceState(state: GameState, next: GameState) {
+  const started = state.started;
+  Object.assign(state, next);
+  state.started = started;
+}
+
+export function goToLevel(state: GameState, levelIndex: number) {
+  replaceState(state, loadLevel(levelIndex, state.player));
+}
+
+export function restartLevel(state: GameState) {
+  const fresh = { ...state.player };
+  fresh.health = fresh.maxHealth;
+  fresh.hunger = fresh.maxHunger;
+  replaceState(state, loadLevel(state.levelIndex, fresh));
+}
+
+export function restartGame(state: GameState) {
+  replaceState(state, loadLevel(0));
 }
 
 function rectsOverlap(
@@ -221,23 +252,18 @@ function spawnExplosion(state: GameState, x: number, y: number) {
   spawnParticle(state, x, y, "#6b7280", 15, 4);
 }
 
-function biomeFor(x: number): Biome {
-  if (x >= CASTLE_START) return "castle";
-  if (x >= LAVA_START) return "lava";
-  if (x >= SCARY_START) return "scary";
-  return "sunny";
+function biomeFor(state: GameState, x: number): Biome {
+  const level = LEVELS[state.levelIndex]!;
+  if (!level.bands) return level.biome;
+  let current = level.bands[0]!.biome;
+  for (const band of level.bands) if (x >= band.from) current = band.biome;
+  return current;
 }
-
-const BIOME_NAMES: Record<Biome, string> = {
-  sunny: "Sunny Forest",
-  scary: "Scary Forest",
-  lava: "Lava Lands",
-  castle: "The Dragon's Castle",
-};
 
 function updatePlayer(state: GameState) {
   const p = state.player;
   const keys = state.keys;
+  const swim = state.swim;
 
   let moveLeft = false;
   let moveRight = false;
@@ -246,7 +272,7 @@ function updatePlayer(state: GameState) {
   if (keys["d"] || keys["arrowright"]) moveRight = true;
 
   const sprinting = keys["shift"] && p.hunger > 0;
-  const speed = sprinting ? SPRINT_SPEED : WALK_SPEED;
+  const speed = swim ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
 
   if (moveLeft && !moveRight) {
     p.vx = -speed;
@@ -255,24 +281,35 @@ function updatePlayer(state: GameState) {
     p.vx = speed;
     p.facing = "right";
   } else {
-    p.vx = 0;
+    p.vx = swim ? p.vx * 0.85 : 0;
   }
 
-  if (sprinting && (moveLeft || moveRight)) {
+  if (sprinting && !swim && (moveLeft || moveRight)) {
     p.hunger = Math.max(0, p.hunger - 0.008);
     if (p.hunger <= 0) showMessage(state, "Too hungry to sprint!");
   }
 
-  if (keys[" "] && p.onGround) {
-    p.vy = JUMP_FORCE;
-    p.onGround = false;
-    keys[" "] = false;
+  if (swim) {
+    if (keys[" "] || keys["w"] || keys["arrowup"]) p.vy -= 0.42;
+    if (keys["s"] || keys["arrowdown"]) p.vy += 0.3;
+    p.vy = clamp(p.vy * 0.94 + SWIM_GRAVITY, -4.2, 4);
+  } else {
+    if (keys[" "] && p.onGround) {
+      p.vy = JUMP_FORCE;
+      p.onGround = false;
+      keys[" "] = false;
+    }
+    p.vy += GRAVITY;
   }
 
-  // R switches weapon back and forth
+  // R switches weapon back and forth (bow unlocks in the village)
   if (keys["r"]) {
-    p.weapon = p.weapon === "sword" ? "bow" : "sword";
-    showMessage(state, p.weapon === "bow" ? "Bow equipped — F to shoot" : "Sword equipped — F to swing", 70);
+    if (p.hasBow) {
+      p.weapon = p.weapon === "sword" ? "bow" : "sword";
+      showMessage(state, p.weapon === "bow" ? "Bow equipped — F to shoot" : "Sword equipped — F to swing", 70);
+    } else {
+      showMessage(state, "You don't have a bow yet!", 80);
+    }
     keys["r"] = false;
   }
 
@@ -308,11 +345,11 @@ function updatePlayer(state: GameState) {
   }
   if (p.attackCooldown > 0) p.attackCooldown--;
 
-  p.vy += GRAVITY;
   p.x += p.vx;
   p.y += p.vy;
 
-  p.x = clamp(p.x, 0, WORLD_WIDTH - p.width);
+  p.x = clamp(p.x, 0, state.worldWidth - p.width);
+  if (swim) p.y = Math.max(60, p.y);
 
   p.onGround = false;
   for (const platform of state.platforms) {
@@ -336,7 +373,7 @@ function updatePlayer(state: GameState) {
   if (p.y > CANVAS_HEIGHT + 100) p.health = 0;
   if (p.invulnerable > 0) p.invulnerable--;
 
-  const nextBiome = biomeFor(p.x);
+  const nextBiome = biomeFor(state, p.x);
   if (nextBiome !== state.biome) {
     state.biome = nextBiome;
     state.biomeLabelTimer = 180;
@@ -344,9 +381,41 @@ function updatePlayer(state: GameState) {
   }
   if (state.biomeLabelTimer > 0) state.biomeLabelTimer--;
 
-  if (p.x >= DRAGON_ARENA_X - 200 && state.dragon === null && state.cage.open === false && state.keyDrop === null) {
-    state.dragon = createDragon();
-    showMessage(state, "The dragon! Grab TNT from a pail, throw it when it lands.", 180);
+  // Creepy forest ambience
+  if (state.biome === "dark") {
+    state.owlTimer--;
+    if (state.owlTimer <= 0) {
+      state.owlTimer = 180 + Math.floor(Math.random() * 220);
+      playOwlHoot();
+    }
+  }
+
+  // Castle cutscene then the boss
+  if (state.levelIndex === FINALE_LEVEL_INDEX) {
+    if (!state.castleCutsceneDone && p.x >= CASTLE_TRIGGER_X) {
+      state.castleCutsceneDone = true;
+      state.mode = "cutscene";
+      state.cutsceneTimer = 0;
+      state.cutscenePhase = 0;
+      return;
+    }
+    if (
+      state.castleCutsceneDone &&
+      p.x >= DRAGON_ARENA_X - 200 &&
+      state.dragon === null &&
+      state.keyDrop === null &&
+      state.cage &&
+      !state.cage.open
+    ) {
+      state.dragon = createDragon();
+      showMessage(state, "The dragon! Grab TNT from a pail, throw it when it lands.", 180);
+    }
+  }
+
+  // Level exit
+  if (p.x + p.width >= state.exitX) {
+    state.mode = "levelcomplete";
+    state.levelCompleteTimer = 0;
   }
 }
 
@@ -363,17 +432,37 @@ function updateEnemies(state: GameState) {
   for (const e of state.enemies) {
     if (e.health <= 0) continue;
 
-    e.x += e.vx;
-    if (e.x <= e.patrolStart || e.x + e.width >= e.patrolEnd) e.vx *= -1;
-    e.x = clamp(e.x, e.patrolStart, e.patrolEnd - e.width);
-
-    e.wobble += e.kind === "winged" ? 0.12 : 0.06;
-    if (e.kind === "winged") {
-      e.y = e.baseY + Math.sin(e.wobble) * 40;
-    } else if (e.kind === "tentacle") {
-      e.y = e.baseY + Math.sin(e.wobble) * 3;
+    if (e.kind === "fish") {
+      // Homes in on the knight through the water
+      const dx = p.x + p.width / 2 - (e.x + e.width / 2);
+      const dy = p.y + p.height / 2 - (e.y + e.height / 2);
+      const dist = Math.hypot(dx, dy) || 1;
+      e.vx += (dx / dist) * 0.06;
+      e.vy += (dy / dist) * 0.05;
+      e.vx = clamp(e.vx, -2.4, 2.4);
+      e.vy = clamp(e.vy, -2, 2);
+      e.x += e.vx;
+      e.y += e.vy;
+      e.x = clamp(e.x, e.patrolStart - 200, e.patrolEnd + 200);
+      e.y = clamp(e.y, 80, GROUND_Y - e.height);
+    } else if (e.kind === "insect") {
+      e.x += e.vx;
+      if (e.x <= e.patrolStart || e.x + e.width >= e.patrolEnd) e.vx *= -1;
+      e.wobble += 0.16;
+      e.y = e.baseY - Math.abs(Math.sin(e.wobble)) * 34;
+    } else {
+      e.x += e.vx;
+      if (e.x <= e.patrolStart || e.x + e.width >= e.patrolEnd) e.vx *= -1;
+      e.x = clamp(e.x, e.patrolStart, e.patrolEnd - e.width);
+      e.wobble += e.kind === "winged" ? 0.12 : 0.06;
+      if (e.kind === "winged") {
+        e.y = e.baseY + Math.sin(e.wobble) * 40;
+      } else if (e.kind === "tentacle") {
+        e.y = e.baseY + Math.sin(e.wobble) * 3;
+      }
     }
 
+    if (e.kind === "fish") e.wobble += 0.2;
     if (e.flash > 0) e.flash--;
 
     if (rectsOverlap(p, e) && p.invulnerable <= 0) {
@@ -404,7 +493,7 @@ function updateArrows(state: GameState) {
     const a = state.arrows[i]!;
     a.x += a.vx;
     a.y += a.vy;
-    a.vy += 0.06;
+    a.vy += state.swim ? 0.02 : 0.06;
     a.life--;
 
     let hit = false;
@@ -452,9 +541,12 @@ function updateChests(state: GameState) {
       } else if (chest.item === "food") {
         p.hunger = p.maxHunger;
         showMessage(state, "Food! Hunger restored");
-      } else {
+      } else if (p.hasBow) {
         p.arrowsLeft += 12;
         showMessage(state, "+12 arrows");
+      } else {
+        p.hunger = p.maxHunger;
+        showMessage(state, "Just a snack — no bow yet");
       }
     }
   }
@@ -520,7 +612,7 @@ function updateDragon(state: GameState) {
           life: 160,
         } satisfies Fireball);
       }
-      if (d.timer > 200) {
+      if (d.timer > 180) {
         d.state = "landing";
         d.timer = 0;
       }
@@ -537,7 +629,7 @@ function updateDragon(state: GameState) {
       break;
     }
     case "resting": {
-      if (d.timer > 330) {
+      if (d.timer > 420) {
         d.state = "taking_off";
         d.timer = 0;
       }
@@ -594,7 +686,7 @@ function updateTNT(state: GameState) {
         const dx = t.x - (d.x + d.width / 2);
         const dy = t.y - (d.y + d.height / 2);
         if (Math.sqrt(dx * dx + dy * dy) < 130) {
-          d.health--;
+          d.health -= 3;
           d.flash = 12;
           spawnParticle(state, d.x + d.width / 2, d.y + d.height / 2, "#f97316", 12, 5);
           if (d.health <= 0) {
@@ -635,7 +727,7 @@ function updateKeyAndCage(state: GameState) {
   }
 
   const cage = state.cage;
-  if (!cage.open && p.hasKey && state.keys["e"]) {
+  if (cage && !cage.open && p.hasKey && state.keys["e"]) {
     const dx = p.x + p.width / 2 - (cage.x + cage.width / 2);
     if (Math.abs(dx) < 90) {
       cage.open = true;
@@ -662,13 +754,30 @@ function updateParticles(state: GameState) {
 function updateCamera(state: GameState) {
   const target = state.player.x - CANVAS_WIDTH / 3;
   state.cameraX += (target - state.cameraX) * 0.1;
-  state.cameraX = clamp(state.cameraX, 0, WORLD_WIDTH - CANVAS_WIDTH);
+  state.cameraX = clamp(state.cameraX, 0, Math.max(0, state.worldWidth - CANVAS_WIDTH));
 }
 
 function updateCutscene(state: GameState) {
   state.cutsceneTimer++;
-  const phaseDuration = 180;
+  const phaseDuration = 150;
   state.cutscenePhase = Math.floor(state.cutsceneTimer / phaseDuration);
+
+  // The walk-up-to-the-castle cutscene happens before the cage is opened
+  const beforeBoss = state.cage !== null && !state.cage.open;
+
+  if (beforeBoss) {
+    state.player.x += 1.4;
+    updateCamera(state);
+    if (state.cutscenePhase === 0) state.message = "The knight reaches the dragon's castle...";
+    else if (state.cutscenePhase === 1) state.message = "A roar shakes the walls.";
+    else {
+      state.mode = "playing";
+      showMessage(state, "Boss fight! Take TNT from a pail with E.", 180);
+      return;
+    }
+    state.messageTimer = 10;
+    return;
+  }
 
   if (state.cutscenePhase === 0) {
     state.message = "The cage swings open!";
@@ -686,6 +795,13 @@ function updateCutscene(state: GameState) {
 export function updateGame(state: GameState) {
   if (state.mode === "won" || state.mode === "gameover") return;
 
+  if (state.mode === "levelcomplete") {
+    state.levelCompleteTimer++;
+    updateParticles(state);
+    if (state.levelCompleteTimer > 130) goToLevel(state, state.levelIndex + 1);
+    return;
+  }
+
   if (state.mode === "cutscene") {
     updateCutscene(state);
     updateParticles(state);
@@ -693,6 +809,7 @@ export function updateGame(state: GameState) {
   }
 
   updatePlayer(state);
+  if (state.mode !== "playing") return;
   updateEnemies(state);
   updateArrows(state);
   updateChests(state);
@@ -704,7 +821,7 @@ export function updateGame(state: GameState) {
 
   if (state.player.health <= 0) {
     state.mode = "gameover";
-    state.message = "Game Over — Refresh to try again";
+    state.message = "Game Over — press Enter to retry this level";
     state.messageTimer = 300;
   }
 
@@ -713,6 +830,14 @@ export function updateGame(state: GameState) {
 }
 
 export function handleKeyDown(state: GameState, key: string) {
+  if (state.mode === "gameover" && (key === "enter" || key === " ")) {
+    restartLevel(state);
+    return;
+  }
+  if (state.mode === "won" && (key === "enter" || key === " ")) {
+    restartGame(state);
+    return;
+  }
   state.keys[key] = true;
   if (!state.started && key !== "") state.started = true;
 }
@@ -723,52 +848,104 @@ export function handleKeyUp(state: GameState, key: string) {
 
 /* ---------------- Rendering ---------------- */
 
+const PLATFORM_COLORS: Record<Biome, [string, string]> = {
+  sunny: ["#4ade80", "#78350f"],
+  night: ["#1e293b", "#0f172a"],
+  beach: ["#fde68a", "#b45309"],
+  ocean: ["#0e7490", "#134e4a"],
+  village: ["#a3a3a3", "#57534e"],
+  desert: ["#fbbf24", "#92400e"],
+  snow: ["#f8fafc", "#94a3b8"],
+  dark: ["#1c1917", "#0c0a09"],
+  fire: ["#f97316", "#450a0a"],
+  castle: ["#475569", "#334155"],
+};
+
 function drawPlatform(ctx: CanvasRenderingContext2D, platform: Platform, cameraX: number, biome: Biome) {
-  const top = biome === "sunny" ? "#4ade80" : biome === "scary" ? "#334155" : biome === "lava" ? "#7c2d12" : "#475569";
-  const body = biome === "sunny" ? "#78350f" : biome === "scary" ? "#1e293b" : biome === "lava" ? "#450a0a" : "#334155";
+  const [top, body] = PLATFORM_COLORS[biome];
   ctx.fillStyle = body;
   ctx.fillRect(platform.x - cameraX, platform.y, platform.width, platform.height);
   ctx.fillStyle = top;
   ctx.fillRect(platform.x - cameraX, platform.y, platform.width, 6);
 }
 
-function drawTree(ctx: CanvasRenderingContext2D, x: number, scary: boolean) {
-  ctx.fillStyle = scary ? "#1c1917" : "#7c3f16";
+function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "night" | "dead") {
+  ctx.fillStyle = style === "green" ? "#7c3f16" : "#1c1917";
   ctx.fillRect(x, GROUND_Y - 90, 14, 90);
-  ctx.fillStyle = scary ? "#0f172a" : "#16a34a";
+  ctx.fillStyle = style === "green" ? "#16a34a" : style === "night" ? "#14532d" : "#0c0a09";
   ctx.beginPath();
   ctx.moveTo(x - 26, GROUND_Y - 80);
   ctx.lineTo(x + 7, GROUND_Y - 150);
   ctx.lineTo(x + 40, GROUND_Y - 80);
   ctx.closePath();
   ctx.fill();
-  if (scary) {
+  if (style === "dead") {
     ctx.fillStyle = "#facc15";
     ctx.fillRect(x + 2, GROUND_Y - 110, 3, 3);
     ctx.fillRect(x + 10, GROUND_Y - 110, 3, 3);
   }
 }
 
+function drawPalm(ctx: CanvasRenderingContext2D, x: number) {
+  ctx.fillStyle = "#a16207";
+  ctx.fillRect(x, GROUND_Y - 110, 12, 110);
+  ctx.fillStyle = "#15803d";
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.ellipse(x + 6 + i * 22, GROUND_Y - 112, 26, 9, i * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawHouse(ctx: CanvasRenderingContext2D, x: number) {
+  ctx.fillStyle = "#d6d3d1";
+  ctx.fillRect(x, GROUND_Y - 120, 110, 120);
+  ctx.fillStyle = "#7f1d1d";
+  ctx.beginPath();
+  ctx.moveTo(x - 12, GROUND_Y - 120);
+  ctx.lineTo(x + 55, GROUND_Y - 176);
+  ctx.lineTo(x + 122, GROUND_Y - 120);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(x + 44, GROUND_Y - 52, 26, 52);
+  ctx.fillStyle = "#fcd34d";
+  ctx.fillRect(x + 14, GROUND_Y - 100, 22, 22);
+  ctx.fillRect(x + 76, GROUND_Y - 100, 22, 22);
+}
+
+function drawCactus(ctx: CanvasRenderingContext2D, x: number) {
+  ctx.fillStyle = "#15803d";
+  ctx.fillRect(x, GROUND_Y - 90, 18, 90);
+  ctx.fillRect(x - 18, GROUND_Y - 62, 18, 12);
+  ctx.fillRect(x - 18, GROUND_Y - 62, 10, 34);
+  ctx.fillRect(x + 18, GROUND_Y - 76, 18, 12);
+  ctx.fillRect(x + 26, GROUND_Y - 76, 10, 40);
+}
+
 function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
   const b = state.biome;
   const gradient = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-  if (b === "sunny") {
-    gradient.addColorStop(0, "#7dd3fc");
-    gradient.addColorStop(1, "#bbf7d0");
-  } else if (b === "scary") {
-    gradient.addColorStop(0, "#0f172a");
-    gradient.addColorStop(1, "#1f2937");
-  } else if (b === "lava") {
-    gradient.addColorStop(0, "#450a0a");
-    gradient.addColorStop(1, "#b45309");
-  } else {
-    gradient.addColorStop(0, "#1e1b4b");
-    gradient.addColorStop(1, "#312e81");
-  }
+  const stops: Record<Biome, [string, string]> = {
+    sunny: ["#7dd3fc", "#bbf7d0"],
+    night: ["#0b1120", "#1e293b"],
+    beach: ["#38bdf8", "#fde68a"],
+    ocean: ["#0c4a6e", "#082f49"],
+    village: ["#93c5fd", "#d9f99d"],
+    desert: ["#fcd34d", "#fbbf24"],
+    snow: ["#cbd5e1", "#f8fafc"],
+    dark: ["#020617", "#0f172a"],
+    fire: ["#450a0a", "#b45309"],
+    castle: ["#1e1b4b", "#312e81"],
+  };
+  gradient.addColorStop(0, stops[b][0]);
+  gradient.addColorStop(1, stops[b][1]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  if (b === "sunny") {
+  const now = Date.now();
+
+  if (b === "sunny" || b === "beach" || b === "village") {
     ctx.fillStyle = "#fde047";
     ctx.beginPath();
     ctx.arc(680, 90, 44, 0, Math.PI * 2);
@@ -781,17 +958,102 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
       ctx.arc(cx + 30, 90 + (i % 3) * 40, 20, 0, Math.PI * 2);
       ctx.fill();
     }
-  } else if (b === "scary") {
+  }
+
+  if (b === "night" || b === "dark" || b === "snow") {
     ctx.fillStyle = "#e2e8f0";
     ctx.beginPath();
     ctx.arc(650, 90, 34, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#f8fafc";
-    for (let i = 0; i < 40; i++) {
-      const sx = ((i * 173 - state.cameraX * 0.2) % WORLD_WIDTH + WORLD_WIDTH) % WORLD_WIDTH;
-      ctx.fillRect(sx % CANVAS_WIDTH, (i * 37) % 220, 2, 2);
+    for (let i = 0; i < 50; i++) {
+      const sx = (i * 173 - state.cameraX * 0.2) % CANVAS_WIDTH;
+      ctx.fillRect((sx + CANVAS_WIDTH) % CANVAS_WIDTH, (i * 37) % 220, 2, 2);
     }
-  } else if (b === "castle") {
+  }
+
+  if (b === "sunny" || b === "night" || b === "dark") {
+    const style = b === "sunny" ? "green" : b === "night" ? "night" : "dead";
+    for (let i = 0; i < 24; i++) {
+      const sx = i * 320 + 120 - state.cameraX * 0.7;
+      if (sx > -80 && sx < CANVAS_WIDTH + 80) drawTree(ctx, sx, style);
+    }
+  }
+
+  if (b === "beach") {
+    for (let i = 0; i < 16; i++) {
+      const sx = i * 340 + 160 - state.cameraX * 0.7;
+      if (sx > -60 && sx < CANVAS_WIDTH + 60) drawPalm(ctx, sx);
+    }
+    ctx.fillStyle = "rgba(14,165,233,0.55)";
+    ctx.fillRect(0, GROUND_Y - 26, CANVAS_WIDTH, 26);
+  }
+
+  if (b === "village") {
+    for (let i = 0; i < 14; i++) {
+      const sx = i * 360 + 200 - state.cameraX * 0.6;
+      if (sx > -140 && sx < CANVAS_WIDTH + 140) drawHouse(ctx, sx);
+    }
+  }
+
+  if (b === "desert") {
+    ctx.fillStyle = "#f59e0b";
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y);
+    for (let x = 0; x <= CANVAS_WIDTH; x += 40) {
+      ctx.lineTo(x, GROUND_Y - 60 - Math.sin((x + state.cameraX * 0.3) / 120) * 30);
+    }
+    ctx.lineTo(CANVAS_WIDTH, GROUND_Y);
+    ctx.closePath();
+    ctx.fill();
+    for (let i = 0; i < 14; i++) {
+      const sx = i * 340 + 180 - state.cameraX * 0.7;
+      if (sx > -60 && sx < CANVAS_WIDTH + 60) drawCactus(ctx, sx);
+    }
+  }
+
+  if (b === "ocean") {
+    ctx.fillStyle = "rgba(255,255,255,0.06)";
+    for (let i = 0; i < 6; i++) {
+      const sx = i * 200 - (state.cameraX * 0.3) % 200;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0);
+      ctx.lineTo(sx + 70, 0);
+      ctx.lineTo(sx + 160, CANVAS_HEIGHT);
+      ctx.lineTo(sx + 40, CANVAS_HEIGHT);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "rgba(191,219,254,0.5)";
+    for (let i = 0; i < 40; i++) {
+      const bx = (i * 211 - state.cameraX * 0.4) % CANVAS_WIDTH;
+      const by = (CANVAS_HEIGHT - ((now / 14 + i * 90) % CANVAS_HEIGHT)) | 0;
+      ctx.beginPath();
+      ctx.arc((bx + CANVAS_WIDTH) % CANVAS_WIDTH, by, 2 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (b === "snow") {
+    ctx.fillStyle = "#ffffff";
+    for (let i = 0; i < 70; i++) {
+      const sx = (i * 137 + Math.sin(now / 900 + i) * 30 - state.cameraX * 0.3) % CANVAS_WIDTH;
+      const sy = (now / 12 + i * 71) % CANVAS_HEIGHT;
+      ctx.fillRect((sx + CANVAS_WIDTH) % CANVAS_WIDTH, sy, 3, 3);
+    }
+  }
+
+  if (b === "fire") {
+    ctx.fillStyle = "#f97316";
+    for (let i = 0; i < 30; i++) {
+      const t = (now / 20 + i * 40) % 400;
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(((i * 97 - state.cameraX * 0.5) % CANVAS_WIDTH + CANVAS_WIDTH) % CANVAS_WIDTH, GROUND_Y - t, 3, 6);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  if (b === "castle") {
     ctx.fillStyle = "#111827";
     for (let i = 0; i < 6; i++) {
       const tx = i * 170 - (state.cameraX * 0.4) % 170;
@@ -800,34 +1062,48 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     }
   }
 
-  // Scenery trees
-  if (b === "sunny" || b === "scary") {
-    for (let i = 0; i < 20; i++) {
-      const wx = i * 320 + 120;
-      const sx = wx - state.cameraX * 0.7;
-      if (sx > -80 && sx < CANVAS_WIDTH + 80) drawTree(ctx, sx, b === "scary");
-    }
-  }
-
-  if (b === "lava") {
-    ctx.fillStyle = "#f97316";
-    for (let i = 0; i < 30; i++) {
-      const t = (Date.now() / 20 + i * 40) % 400;
-      ctx.globalAlpha = 0.5;
-      ctx.fillRect((i * 97 - state.cameraX * 0.5) % CANVAS_WIDTH, GROUND_Y - t, 3, 6);
-      ctx.globalAlpha = 1;
-    }
+  if (b === "dark") {
+    const fog = ctx.createRadialGradient(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 80, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, 520);
+    fog.addColorStop(0, "rgba(0,0,0,0)");
+    fog.addColorStop(1, "rgba(0,0,0,0.8)");
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 }
 
 function drawGroundStrip(ctx: CanvasRenderingContext2D, state: GameState) {
   const b = state.biome;
-  const color = b === "sunny" ? "#166534" : b === "scary" ? "#0b1120" : b === "lava" ? "#7f1d1d" : "#1f2937";
-  const topColor = b === "sunny" ? "#4ade80" : b === "scary" ? "#1e293b" : b === "lava" ? "#f97316" : "#4b5563";
-  ctx.fillStyle = color;
+  const ground: Record<Biome, [string, string]> = {
+    sunny: ["#166534", "#4ade80"],
+    night: ["#0b1120", "#1e293b"],
+    beach: ["#d97706", "#fde68a"],
+    ocean: ["#164e63", "#0891b2"],
+    village: ["#57534e", "#a3a3a3"],
+    desert: ["#b45309", "#fbbf24"],
+    snow: ["#94a3b8", "#ffffff"],
+    dark: ["#0c0a09", "#1c1917"],
+    fire: ["#7f1d1d", "#f97316"],
+    castle: ["#1f2937", "#4b5563"],
+  };
+  ctx.fillStyle = ground[b][0];
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
-  ctx.fillStyle = topColor;
+  ctx.fillStyle = ground[b][1];
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, 6);
+}
+
+function drawExitGate(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!Number.isFinite(state.exitX)) return;
+  const x = state.exitX - state.cameraX;
+  if (x < -80 || x > CANVAS_WIDTH + 80) return;
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(x, GROUND_Y - 120, 12, 120);
+  ctx.fillRect(x + 78, GROUND_Y - 120, 12, 120);
+  ctx.fillRect(x, GROUND_Y - 132, 90, 14);
+  ctx.fillStyle = "rgba(250, 204, 21, 0.35)";
+  ctx.fillRect(x + 12, GROUND_Y - 118, 66, 118);
+  ctx.fillStyle = "#facc15";
+  ctx.font = "bold 12px sans-serif";
+  ctx.fillText("EXIT", x + 26, GROUND_Y - 138);
 }
 
 function drawPlayer(ctx: CanvasRenderingContext2D, p: Player, cameraX: number) {
@@ -876,7 +1152,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
   if (e.kind === "furry") {
     ctx.fillStyle = flash ? "#ffffff" : "#92400e";
     ctx.fillRect(x, y + 6, e.width, e.height - 6);
-    // fur tufts
     ctx.fillStyle = flash ? "#ffffff" : "#b45309";
     for (let i = 0; i < e.width; i += 8) {
       ctx.beginPath();
@@ -886,7 +1161,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
       ctx.closePath();
       ctx.fill();
     }
-    // horns
     ctx.fillStyle = "#f5f5f4";
     ctx.beginPath();
     ctx.moveTo(x + 2, y + 6);
@@ -921,8 +1195,57 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
     ctx.fillStyle = "#f0abfc";
     ctx.fillRect(x + 10, y + 10, 6, 6);
     ctx.fillRect(x + e.width - 16, y + 10, 6, 6);
+  } else if (e.kind === "fish") {
+    const dir = e.vx >= 0 ? 1 : -1;
+    ctx.fillStyle = flash ? "#ffffff" : "#0ea5e9";
+    ctx.beginPath();
+    ctx.ellipse(x + e.width / 2, y + e.height / 2, e.width / 2, e.height / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // tail
+    ctx.beginPath();
+    const tailX = dir > 0 ? x : x + e.width;
+    ctx.moveTo(tailX, y + e.height / 2);
+    ctx.lineTo(tailX - dir * 16, y - 2 + Math.sin(e.wobble) * 3);
+    ctx.lineTo(tailX - dir * 16, y + e.height + 2 - Math.sin(e.wobble) * 3);
+    ctx.closePath();
+    ctx.fill();
+    // teeth + eye
+    ctx.fillStyle = "#f8fafc";
+    for (let i = 0; i < 4; i++) {
+      const tx = dir > 0 ? x + e.width - 6 - i * 6 : x + 2 + i * 6;
+      ctx.beginPath();
+      ctx.moveTo(tx, y + e.height / 2 + 2);
+      ctx.lineTo(tx + 3, y + e.height / 2 + 9);
+      ctx.lineTo(tx + 6, y + e.height / 2 + 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "#fef08a";
+    ctx.fillRect(dir > 0 ? x + e.width - 16 : x + 10, y + 7, 6, 6);
+  } else if (e.kind === "insect") {
+    ctx.fillStyle = flash ? "#ffffff" : "#166534";
+    ctx.beginPath();
+    ctx.ellipse(x + e.width / 2, y + e.height / 2, e.width / 2, e.height / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = flash ? "#ffffff" : "#052e16";
+    ctx.lineWidth = 3;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x + e.width / 2 + i * 10, y + e.height - 4);
+      ctx.lineTo(x + e.width / 2 + i * 16, y + e.height + 8);
+      ctx.stroke();
+    }
+    // antennae
+    ctx.beginPath();
+    ctx.moveTo(x + e.width - 8, y + 6);
+    ctx.lineTo(x + e.width + 6, y - 8);
+    ctx.moveTo(x + 8, y + 6);
+    ctx.lineTo(x - 6, y - 8);
+    ctx.stroke();
+    ctx.fillStyle = "#f87171";
+    ctx.fillRect(x + e.width - 14, y + 8, 6, 6);
+    ctx.fillRect(x + 8, y + 8, 6, 6);
   } else {
-    // winged
     const flap = Math.sin(e.wobble * 2) * 10;
     ctx.fillStyle = flash ? "#ffffff" : "#be123c";
     ctx.beginPath();
@@ -1048,10 +1371,10 @@ function drawArrow(ctx: CanvasRenderingContext2D, a: Arrow, cameraX: number) {
 
 function drawCage(ctx: CanvasRenderingContext2D, state: GameState) {
   const cage = state.cage;
+  if (!cage) return;
   const x = cage.x - state.cameraX;
   const y = cage.y;
 
-  // princess inside
   const px = x + cage.width / 2 - 14;
   const py = y + cage.height - 48;
   ctx.fillStyle = "#ec4899";
@@ -1111,6 +1434,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
 
   drawBackground(ctx, state);
   drawGroundStrip(ctx, state);
+  drawExitGate(ctx, state);
 
   for (const platform of state.platforms) {
     if (platform.y === GROUND_Y) continue;
@@ -1139,12 +1463,20 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "#ffffff";
   ctx.font = "13px sans-serif";
   ctx.fillText(
-    "A/D: walk • Shift: sprint • Space: jump • R: sword/bow • F: attack • E: chests, TNT pail, key & cage",
+    state.swim
+      ? "A/D: swim • W/Space: rise • S: dive • R: sword/bow • F: attack • E: chests"
+      : "A/D: walk • Shift: sprint • Space: jump • R: sword/bow • F: attack • E: chests, TNT pail, key & cage",
     12,
     CANVAS_HEIGHT - 10
   );
 
-  if (state.biomeLabelTimer > 0) {
+  if (state.levelBanner > 0) {
+    state.levelBanner--;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 22px sans-serif";
+    const name = state.levelName;
+    ctx.fillText(name, CANVAS_WIDTH / 2 - ctx.measureText(name).width / 2, 90);
+  } else if (state.biomeLabelTimer > 0) {
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 20px sans-serif";
     const name = BIOME_NAMES[state.biome];
@@ -1158,10 +1490,23 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 80);
   }
 
-  if (state.player.hasKey && !state.cage.open) {
+  if (state.player.hasKey && state.cage && !state.cage.open) {
     ctx.fillStyle = "#facc15";
     ctx.font = "bold 15px sans-serif";
     const t = "You have the key — run right to the cage and press E!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 104);
+  }
+
+  if (state.mode === "levelcomplete") {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.fillStyle = "#4ade80";
+    ctx.font = "bold 32px sans-serif";
+    const t = "Level Complete!";
+    ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, CANVAS_HEIGHT / 2 - 10);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "16px sans-serif";
+    const next = LEVELS[state.levelIndex + 1]?.name ?? "";
+    ctx.fillText(next, CANVAS_WIDTH / 2 - ctx.measureText(next).width / 2, CANVAS_HEIGHT / 2 + 26);
   }
 }

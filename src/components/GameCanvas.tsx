@@ -46,10 +46,16 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
   const infoY = barY + barH + 18;
   ctx.fillStyle = "#ffffff";
   ctx.fillText(
-    `Weapon: ${p.weapon === "sword" ? "Sword" : "Bow"} (R)   Arrows: ${p.arrowsLeft}   TNT: ${p.tnt}${p.hasKey ? "   Key: yes" : ""}`,
+    `Weapon: ${p.hasBow ? (p.weapon === "sword" ? "Sword" : "Bow") : "Sword"}${p.hasBow ? ` (R)   Arrows: ${p.arrowsLeft}` : "   Bow: locked"}   TNT: ${p.tnt}${p.hasKey ? "   Key: yes" : ""}`,
     barX,
     infoY
   );
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText(state.levelName, barX, infoY + 20);
+  ctx.font = "bold 14px sans-serif";
+
 
   if (state.dragon) {
     const dx = CANVAS_WIDTH - pad - 160;
@@ -98,7 +104,7 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(text, (CANVAS_WIDTH - textWidth) / 2, CANVAS_HEIGHT / 2);
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px sans-serif";
-    const hint = "Refresh to play again";
+    const hint = "Press Enter to play again";
     const hintWidth = ctx.measureText(hint).width;
     ctx.fillText(hint, (CANVAS_WIDTH - hintWidth) / 2, CANVAS_HEIGHT / 2 + 40);
   }
@@ -111,7 +117,12 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     const text = "Game Over";
     const textWidth = ctx.measureText(text).width;
     ctx.fillText(text, (CANVAS_WIDTH - textWidth) / 2, CANVAS_HEIGHT / 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "16px sans-serif";
+    const hint = `Press Enter to retry ${state.levelName}`;
+    ctx.fillText(hint, (CANVAS_WIDTH - ctx.measureText(hint).width) / 2, CANVAS_HEIGHT / 2 + 40);
   }
+
 }
 
 export function GameCanvas() {
@@ -136,6 +147,9 @@ export function GameCanvas() {
     const onKeyUp = (e: KeyboardEvent) => {
       handleKeyUp(stateRef.current, e.key.toLowerCase());
     };
+
+
+
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -192,10 +206,11 @@ export function GameCanvas() {
         />
       </div>
       <p className="mt-4 max-w-2xl text-center text-sm text-slate-400">
-        A/D or Arrows to walk, Shift to sprint, Space to jump, R to switch between sword and bow, F to attack, E to open
-        chests, take TNT from a pail, grab the dragon's key and unlock the princess's cage.
-
+        Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
+        Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
+        you find it in the village, F to attack, E for chests, TNT pails, the dragon's key and the princess's cage.
       </p>
+
     </div>
   );
 }
