@@ -193,10 +193,20 @@ export function GameCanvas() {
   useEffect(() => {
     const resize = () => {
       const touch = window.matchMedia("(pointer: coarse)").matches;
-      const maxWidth = Math.min(window.innerWidth - 16, 1120);
-      const maxHeight = window.innerHeight - 16 - (touch ? 100 : 0);
-      setScale(Math.min(maxWidth / CANVAS_WIDTH, maxHeight / CANVAS_HEIGHT));
-      setPortrait(window.innerHeight > window.innerWidth);
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (touch) {
+        // Fullscreen "cover" scaling: fill the phone screen, crop slightly if needed.
+        const cover = Math.max(vw / CANVAS_WIDTH, vh / CANVAS_HEIGHT);
+        const contain = Math.min(vw / CANVAS_WIDTH, vh / CANVAS_HEIGHT);
+        // Blend towards cover but never crop more than ~18% of a dimension.
+        setScale(Math.min(cover, contain * 1.18));
+      } else {
+        const maxWidth = Math.min(vw - 16, 1120);
+        const maxHeight = vh - 16;
+        setScale(Math.min(maxWidth / CANVAS_WIDTH, maxHeight / CANVAS_HEIGHT));
+      }
+      setPortrait(vh > vw);
     };
     resize();
     window.addEventListener("resize", resize);
@@ -206,6 +216,18 @@ export function GameCanvas() {
       window.removeEventListener("orientationchange", resize);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isTouch) return;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+    };
+  }, [isTouch]);
 
   const press = (key: string) => {
     unlockAudio();
