@@ -1,4 +1,4 @@
-import type { Biome, Chest, ChestItem, EnemyKind, Platform } from "./types";
+import type { Biome, Chest, ChestItem, EnemyKind, Npc, Platform } from "./types";
 
 export const GROUND_Y = 520;
 
@@ -146,7 +146,100 @@ export const LEVELS: LevelDef[] = [
 
 export const FINALE_LEVEL_INDEX = LEVELS.length - 1;
 export const BOW_LEVEL_INDEX = 4; // level 5 (0-based)
+export const VILLAGE_LEVEL_INDEX = 4;
 
 export const CASTLE_TRIGGER_X = 3400;
 export const DRAGON_ARENA_X = 3900;
 export const CAGE_X = 4800;
+
+/** Villagers, shopkeeper and mayor — they appear after the village is saved. */
+export const VILLAGE_NPCS: Npc[] = [
+  {
+    id: "mayor",
+    kind: "mayor",
+    name: "Mayor Bumbleworth",
+    x: 240,
+    color: "#7c3aed",
+    lines: [
+      "Thank you again, brave knight!",
+      "Stay and look around as long as you like.",
+      "Walk to the gate on the right and press E when you are ready to go.",
+    ],
+    done: true,
+  },
+  {
+    id: "shop",
+    kind: "shop",
+    name: "Shopkeeper Pim",
+    x: 760,
+    color: "#0d9488",
+    lines: ["Coins in, goodies out! Press E to browse."],
+    done: true,
+  },
+  {
+    id: "nan",
+    kind: "villager",
+    name: "Nan Crumb",
+    x: 1240,
+    color: "#f97316",
+    lines: [
+      "I baked eleven loaves today and dropped ten of them.",
+      "Here, take this last loaf of bread before I drop it too.",
+    ],
+    gives: "Bread",
+    doneLine: "Careful, that loaf could stop an arrow.",
+    done: false,
+  },
+  {
+    id: "bram",
+    kind: "villager",
+    name: "Farmer Bram",
+    x: 1760,
+    color: "#65a30d",
+    lines: [
+      "My stomach is roaring louder than any monster.",
+      "Bring me bread and I will give you my prize flowers.",
+    ],
+    wants: "Bread",
+    gives: "Flowers",
+    doneLine: "Best bread of my life. My cow agrees.",
+    done: false,
+  },
+  {
+    id: "tilda",
+    kind: "villager",
+    name: "Tilda the Tailor",
+    x: 2320,
+    color: "#db2777",
+    lines: [
+      "I need flowers for the victory parade hats.",
+      "Bring me flowers and I will pay you in shiny coins.",
+    ],
+    wants: "Flowers",
+    reward: 40,
+    doneLine: "The hats look magnificent. Slightly flammable, but magnificent.",
+    done: false,
+  },
+  {
+    id: "goose",
+    kind: "villager",
+    name: "Old Man Fenwick",
+    x: 2600,
+    color: "#0284c7",
+    lines: [
+      "In my day we fought dragons with a spoon.",
+      "A rusty spoon. Uphill. Both ways.",
+    ],
+    doneLine: "Still uphill. Both ways.",
+    done: true,
+  },
+];
+
+export type ShopEntry = { key: string; label: string; cost: number };
+
+export const SHOP_ITEMS: ShopEntry[] = [
+  { key: "1", label: "First Aid Kit — full health", cost: 15 },
+  { key: "2", label: "15 Arrows", cost: 10 },
+  { key: "3", label: "Hearty Meal — full hunger", cost: 8 },
+  { key: "4", label: "Extra Heart — max health +1", cost: 50 },
+];
