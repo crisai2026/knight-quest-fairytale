@@ -203,10 +203,11 @@ export function GameCanvas() {
         />
       </div>
       <p className="mt-4 max-w-2xl text-center text-sm text-slate-400">
-        A/D or Arrows to walk, Shift to sprint, Space to jump, R to switch between sword and bow, F to attack, E to open
-        chests, take TNT from a pail, grab the dragon's key and unlock the princess's cage.
-
+        Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
+        Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
+        you find it in the village, F to attack, E for chests, TNT pails, the dragon's key and the princess's cage.
       </p>
+
     </div>
   );
 }
