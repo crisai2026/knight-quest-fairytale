@@ -1,4 +1,4 @@
-# Juego a pantalla completa en el teléfono
+Juego a pantalla completa en el teléfono
 
 Hoy en móvil el juego se encoge a un rectángulo pequeño porque deja hueco para los botones debajo y para el texto de la página. La idea: en teléfono, el juego ocupa toda la pantalla y los botones flotan encima, en las esquinas, semitransparentes.
 
@@ -12,7 +12,7 @@ Hoy en móvil el juego se encoge a un rectángulo pequeño porque deja hueco par
   - en una zona baja donde no está la acción ni el HUD.
 - El botón de música pasa a ser un icono pequeño en la esquina superior derecha, para no tapar el HUD.
 - El texto de instrucciones se oculta en móvil (sigue visible en escritorio).
-- Aviso de "gira el teléfono" como capa encima, solo si está en vertical.
+- Aviso de "gira el teléfono" como capa encima, solo si está en vertical. En ingles.
 
 ## En escritorio
 
