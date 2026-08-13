@@ -145,9 +145,12 @@ export function GameCanvas() {
   const rafRef = useRef<number | null>(null);
   const [scale, setScale] = useState(1);
   const [musicOn, setMusicOn] = useState(true);
+  const [isTouch, setIsTouch] = useState(false);
+  const [portrait, setPortrait] = useState(false);
 
   useEffect(() => {
     setMusicOn(isMusicEnabled());
+    setIsTouch(window.matchMedia("(pointer: coarse)").matches);
   }, []);
 
   useEffect(() => {
@@ -168,13 +171,9 @@ export function GameCanvas() {
       handleKeyUp(stateRef.current, e.key.toLowerCase());
     };
 
-
-
-
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
-    
     const loop = () => {
       updateGame(stateRef.current);
       renderGame(ctx, stateRef.current);
@@ -193,21 +192,60 @@ export function GameCanvas() {
 
   useEffect(() => {
     const resize = () => {
-      const maxWidth = Math.min(window.innerWidth - 32, 1120);
-      setScale(maxWidth / CANVAS_WIDTH);
+      const maxWidth = Math.min(window.innerWidth - 16, 1120);
+      const maxHeight = window.innerHeight - 16;
+      setScale(Math.min(maxWidth / CANVAS_WIDTH, maxHeight / CANVAS_HEIGHT));
+      setPortrait(window.innerHeight > window.innerWidth);
     };
     resize();
     window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    window.addEventListener("orientationchange", resize);
+    return () => {
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("orientationchange", resize);
+    };
   }, []);
 
+  const press = (key: string) => {
+    unlockAudio();
+    stateRef.current.started = true;
+    handleKeyDown(stateRef.current, key);
+  };
+  const release = (key: string) => {
+    handleKeyUp(stateRef.current, key);
+  };
+
+  const TouchButton = ({ keyName, label, className = "" }: { keyName: string; label: string; className?: string }) => (
+    <button
+      type="button"
+      aria-label={label}
+      onContextMenu={(e) => e.preventDefault()}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        press(keyName);
+      }}
+      onPointerUp={(e) => {
+        e.preventDefault();
+        release(keyName);
+      }}
+      onPointerCancel={() => release(keyName)}
+      onPointerLeave={() => release(keyName)}
+      className={`select-none rounded-full border border-slate-300/40 bg-slate-900/55 text-lg font-black text-slate-50 backdrop-blur-sm active:bg-slate-100/30 ${className}`}
+      style={{ touchAction: "none" }}
+    >
+      {label}
+    </button>
+  );
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-950 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-950 p-2 sm:p-4">
       <div
         className="relative overflow-hidden rounded-lg border-4 border-slate-700 shadow-2xl"
         style={{
           width: CANVAS_WIDTH * scale,
           height: CANVAS_HEIGHT * scale,
+          touchAction: "none",
         }}
       >
         <canvas
@@ -223,6 +261,7 @@ export function GameCanvas() {
             width: CANVAS_WIDTH * scale,
             height: CANVAS_HEIGHT * scale,
             imageRendering: "pixelated",
+            touchAction: "none",
           }}
         />
         <button
@@ -233,12 +272,35 @@ export function GameCanvas() {
             setMusicOn(next);
             setMusicEnabled(next);
           }}
-          className="absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-sm font-semibold text-slate-100 hover:bg-slate-800"
+          className="absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 sm:text-sm"
         >
           {musicOn ? "Music: On" : "Music: Off"}
         </button>
+
+        {isTouch && (
+          <>
+            <div className="absolute bottom-3 left-3 flex items-end gap-2">
+              <TouchButton keyName="a" label="←" className="h-14 w-14" />
+              <TouchButton keyName="d" label="→" className="h-14 w-14" />
+              <TouchButton keyName="shift" label="Run" className="h-11 w-11 text-xs" />
+            </div>
+            <div className="absolute bottom-3 right-3 flex items-end gap-2">
+              <TouchButton keyName="r" label="R" className="h-11 w-11 text-sm" />
+              <TouchButton keyName="s" label="↓" className="h-11 w-11 text-sm" />
+              <TouchButton keyName="e" label="E" className="h-14 w-14" />
+              <TouchButton keyName="f" label="F" className="h-14 w-14" />
+              <TouchButton keyName=" " label="Jump" className="h-16 w-16 text-xs" />
+            </div>
+          </>
+        )}
+
+        {isTouch && portrait && (
+          <div className="pointer-events-none absolute inset-x-0 top-14 text-center text-xs font-semibold text-slate-100/80">
+            Gira el teléfono para jugar mejor
+          </div>
+        )}
       </div>
-      <p className="mt-4 max-w-2xl text-center text-sm text-slate-400">
+      <p className="mt-4 hidden max-w-2xl text-center text-sm text-slate-400 sm:block">
         Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
         Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
         you find it in the village, F to attack, E for chests, villagers, the shop, TNT pails, the dragon's key and the
@@ -247,3 +309,4 @@ export function GameCanvas() {
     </div>
   );
 }
+
