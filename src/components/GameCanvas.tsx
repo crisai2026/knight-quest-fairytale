@@ -147,6 +147,8 @@ export function GameCanvas() {
     const onKeyUp = (e: KeyboardEvent) => {
       handleKeyUp(stateRef.current, e.key.toLowerCase());
     };
+    (window as unknown as { __gs?: unknown }).__gs = stateRef.current;
+
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
