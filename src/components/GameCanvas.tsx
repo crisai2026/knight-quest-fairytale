@@ -277,35 +277,36 @@ export function GameCanvas() {
           {musicOn ? "Music: On" : "Music: Off"}
         </button>
 
-        {isTouch && (
-          <>
-            <div className="absolute bottom-3 left-3 flex items-end gap-2">
-              <TouchButton keyName="a" label="←" className="h-14 w-14" />
-              <TouchButton keyName="d" label="→" className="h-14 w-14" />
-              <TouchButton keyName="shift" label="Run" className="h-11 w-11 text-xs" />
-            </div>
-            <div className="absolute bottom-3 right-3 flex items-end gap-2">
-              <TouchButton keyName="r" label="R" className="h-11 w-11 text-sm" />
-              <TouchButton keyName="s" label="↓" className="h-11 w-11 text-sm" />
-              <TouchButton keyName="e" label="E" className="h-14 w-14" />
-              <TouchButton keyName="f" label="F" className="h-14 w-14" />
-              <TouchButton keyName=" " label="Jump" className="h-16 w-16 text-xs" />
-            </div>
-          </>
-        )}
-
-        {isTouch && portrait && (
-          <div className="pointer-events-none absolute inset-x-0 top-14 text-center text-xs font-semibold text-slate-100/80">
-            Gira el teléfono para jugar mejor
-          </div>
-        )}
       </div>
+
+      {isTouch && (
+        <div className="mt-3 flex w-full max-w-3xl items-end justify-between gap-3 px-1">
+          <div className="flex items-end gap-2">
+            <TouchButton keyName="a" label="←" className="h-14 w-14" />
+            <TouchButton keyName="d" label="→" className="h-14 w-14" />
+            <TouchButton keyName="shift" label="Run" className="h-11 w-11 text-[11px]" />
+          </div>
+          <div className="flex items-end gap-2">
+            <TouchButton keyName="r" label="R" className="h-11 w-11 text-sm" />
+            <TouchButton keyName="s" label="↓" className="h-11 w-11 text-sm" />
+            <TouchButton keyName="e" label="E" className="h-14 w-14" />
+            <TouchButton keyName="f" label="F" className="h-14 w-14" />
+            <TouchButton keyName=" " label="Jump" className="h-16 w-16 text-[11px]" />
+          </div>
+        </div>
+      )}
+
+      {isTouch && portrait && (
+        <p className="mt-2 text-center text-xs font-semibold text-slate-400">Gira el teléfono para jugar mejor</p>
+      )}
+
       <p className="mt-4 hidden max-w-2xl text-center text-sm text-slate-400 sm:block">
         Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
         Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
         you find it in the village, F to attack, E for chests, villagers, the shop, TNT pails, the dragon's key and the
         princess's cage.
       </p>
+
     </div>
   );
 }
