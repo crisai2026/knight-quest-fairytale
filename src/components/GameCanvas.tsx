@@ -46,10 +46,16 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
   const infoY = barY + barH + 18;
   ctx.fillStyle = "#ffffff";
   ctx.fillText(
-    `Weapon: ${p.weapon === "sword" ? "Sword" : "Bow"} (R)   Arrows: ${p.arrowsLeft}   TNT: ${p.tnt}${p.hasKey ? "   Key: yes" : ""}`,
+    `Weapon: ${p.hasBow ? (p.weapon === "sword" ? "Sword" : "Bow") : "Sword"}${p.hasBow ? ` (R)   Arrows: ${p.arrowsLeft}` : "   Bow: locked"}   TNT: ${p.tnt}${p.hasKey ? "   Key: yes" : ""}`,
     barX,
     infoY
   );
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText(state.levelName, barX, infoY + 20);
+  ctx.font = "bold 14px sans-serif";
+
 
   if (state.dragon) {
     const dx = CANVAS_WIDTH - pad - 160;
