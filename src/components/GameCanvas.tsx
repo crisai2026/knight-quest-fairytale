@@ -261,6 +261,82 @@ export function GameCanvas() {
     </button>
   );
 
+  const canvasEl = (
+    <canvas
+      ref={canvasRef}
+      width={CANVAS_WIDTH}
+      height={CANVAS_HEIGHT}
+      className="block cursor-pointer"
+      onClick={() => {
+        unlockAudio();
+        stateRef.current.started = true;
+      }}
+      style={{
+        width: CANVAS_WIDTH * scale,
+        height: CANVAS_HEIGHT * scale,
+        imageRendering: "pixelated",
+        touchAction: "none",
+      }}
+    />
+  );
+
+  const musicButton = (
+    <button
+      type="button"
+      onClick={() => {
+        unlockAudio();
+        const next = !musicOn;
+        setMusicOn(next);
+        setMusicEnabled(next);
+      }}
+      className={
+        isTouch
+          ? "absolute right-2 top-2 z-20 h-9 w-9 rounded-full border border-slate-400/50 bg-slate-900/50 text-base text-slate-100"
+          : "absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 sm:text-sm"
+      }
+      aria-label={musicOn ? "Turn music off" : "Turn music on"}
+    >
+      {isTouch ? (musicOn ? "♪" : "✕") : musicOn ? "Music: On" : "Music: Off"}
+    </button>
+  );
+
+  if (isTouch) {
+    return (
+      <div
+        className="fixed inset-0 z-50 overflow-hidden overscroll-none bg-slate-950"
+        style={{ touchAction: "none" }}
+      >
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">{canvasEl}</div>
+
+        {musicButton}
+
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between px-3 pb-3"
+          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        >
+          <div className="pointer-events-auto flex items-end gap-2 opacity-60">
+            <TouchButton keyName="a" label="←" className="h-14 w-14" />
+            <TouchButton keyName="d" label="→" className="h-14 w-14" />
+            <TouchButton keyName="shift" label="Run" className="h-11 w-11 text-[11px]" />
+          </div>
+          <div className="pointer-events-auto flex items-end gap-2 opacity-60">
+            <TouchButton keyName="r" label="R" className="h-11 w-11 text-sm" />
+            <TouchButton keyName="s" label="↓" className="h-11 w-11 text-sm" />
+            <TouchButton keyName="e" label="E" className="h-14 w-14" />
+            <TouchButton keyName="f" label="F" className="h-14 w-14" />
+            <TouchButton keyName=" " label="Jump" className="h-16 w-16 text-[11px]" />
+          </div>
+        </div>
+
+        {portrait && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/85 px-6 text-center">
+            <p className="text-base font-bold text-slate-100">Rotate your phone to play</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-slate-950 p-2 sm:p-4">
       <div
@@ -271,57 +347,9 @@ export function GameCanvas() {
           touchAction: "none",
         }}
       >
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="block cursor-pointer"
-          onClick={() => {
-            unlockAudio();
-            stateRef.current.started = true;
-          }}
-          style={{
-            width: CANVAS_WIDTH * scale,
-            height: CANVAS_HEIGHT * scale,
-            imageRendering: "pixelated",
-            touchAction: "none",
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            unlockAudio();
-            const next = !musicOn;
-            setMusicOn(next);
-            setMusicEnabled(next);
-          }}
-          className="absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 sm:text-sm"
-        >
-          {musicOn ? "Music: On" : "Music: Off"}
-        </button>
-
+        {canvasEl}
+        {musicButton}
       </div>
-
-      {isTouch && (
-        <div className="mt-3 flex w-full max-w-3xl items-end justify-between gap-3 px-1">
-          <div className="flex items-end gap-2">
-            <TouchButton keyName="a" label="←" className="h-14 w-14" />
-            <TouchButton keyName="d" label="→" className="h-14 w-14" />
-            <TouchButton keyName="shift" label="Run" className="h-11 w-11 text-[11px]" />
-          </div>
-          <div className="flex items-end gap-2">
-            <TouchButton keyName="r" label="R" className="h-11 w-11 text-sm" />
-            <TouchButton keyName="s" label="↓" className="h-11 w-11 text-sm" />
-            <TouchButton keyName="e" label="E" className="h-14 w-14" />
-            <TouchButton keyName="f" label="F" className="h-14 w-14" />
-            <TouchButton keyName=" " label="Jump" className="h-16 w-16 text-[11px]" />
-          </div>
-        </div>
-      )}
-
-      {isTouch && portrait && (
-        <p className="mt-2 text-center text-xs font-semibold text-slate-400">Gira el teléfono para jugar mejor</p>
-      )}
 
       <p className="mt-4 hidden max-w-2xl text-center text-sm text-slate-400 sm:block">
         Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
@@ -329,7 +357,6 @@ export function GameCanvas() {
         you find it in the village, F to attack, E for chests, villagers, the shop, TNT pails, the dragon's key and the
         princess's cage.
       </p>
-
     </div>
   );
 }
