@@ -1,4 +1,4 @@
-export type GameMode = "playing" | "levelcomplete" | "cutscene" | "gameover" | "won";
+export type GameMode = "playing" | "levelcomplete" | "cutscene" | "dialog" | "shop" | "gameover" | "won";
 
 export type Weapon = "sword" | "bow";
 
@@ -40,11 +40,47 @@ export type GameState = {
   cutsceneTimer: number;
   cutscenePhase: number;
   castleCutsceneDone: boolean;
+  dragonIntroDone: boolean;
   keys: Record<string, boolean>;
   started: boolean;
   biome: Biome;
   biomeLabelTimer: number;
   owlTimer: number;
+  coins: CoinDrop[];
+  npcs: Npc[];
+  dialogLines: string[];
+  dialogIndex: number;
+  dialogSpeaker: string;
+  villageFree: boolean;
+  shopMessage: string;
+};
+
+export type CoinDrop = {
+  x: number;
+  y: number;
+  vy: number;
+  value: number;
+  spin: number;
+};
+
+export type NpcKind = "mayor" | "shop" | "villager";
+
+export type Npc = {
+  id: string;
+  kind: NpcKind;
+  name: string;
+  x: number;
+  color: string;
+  lines: string[];
+  /** Quest item this villager is looking for. */
+  wants?: string;
+  /** Quest item handed over when talked to (or when `wants` is delivered). */
+  gives?: string;
+  /** Line said once the quest is settled. */
+  doneLine?: string;
+  /** Coins handed out when the quest is completed. */
+  reward?: number;
+  done: boolean;
 };
 
 export type Player = {
@@ -69,6 +105,11 @@ export type Player = {
   arrowsLeft: number;
   tnt: number;
   hasKey: boolean;
+  coins: number;
+  /** Quest items collected in the village. */
+  items: string[];
+  /** Set once the village is reached, unlocking village respawn. */
+  reachedVillage: boolean;
 };
 
 export type EnemyKind = "furry" | "tentacle" | "winged" | "fish" | "insect";

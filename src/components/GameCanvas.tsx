@@ -8,6 +8,7 @@ import {
   renderGame,
   updateGame,
 } from "@/lib/game/engine";
+import { isMusicEnabled, setMusicEnabled, unlockAudio } from "@/lib/game/audio";
 import type { GameState } from "@/lib/game/types";
 
 function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -51,10 +52,18 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     infoY
   );
 
+  ctx.fillStyle = "#facc15";
+  ctx.fillText(`Coins: ${p.coins}`, barX, infoY + 20);
+  if (p.items.length > 0) {
+    ctx.fillStyle = "#a5b4fc";
+    ctx.fillText(`Carrying: ${p.items.join(", ")}`, barX + 90, infoY + 20);
+  }
+
   ctx.fillStyle = "#e2e8f0";
   ctx.font = "bold 13px sans-serif";
-  ctx.fillText(state.levelName, barX, infoY + 20);
+  ctx.fillText(state.levelName, barX, infoY + 40);
   ctx.font = "bold 14px sans-serif";
+
 
 
   if (state.dragon) {
@@ -121,6 +130,11 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.font = "16px sans-serif";
     const hint = `Press Enter to retry ${state.levelName}`;
     ctx.fillText(hint, (CANVAS_WIDTH - ctx.measureText(hint).width) / 2, CANVAS_HEIGHT / 2 + 40);
+    if (state.player.reachedVillage) {
+      ctx.fillStyle = "#4ade80";
+      const hint2 = "Press V to respawn in the village";
+      ctx.fillText(hint2, (CANVAS_WIDTH - ctx.measureText(hint2).width) / 2, CANVAS_HEIGHT / 2 + 68);
+    }
   }
 
 }
@@ -130,6 +144,11 @@ export function GameCanvas() {
   const stateRef = useRef<GameState>(createInitialState());
   const rafRef = useRef<number | null>(null);
   const [scale, setScale] = useState(1);
+  const [musicOn, setMusicOn] = useState(true);
+
+  useEffect(() => {
+    setMusicOn(isMusicEnabled());
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -139,6 +158,7 @@ export function GameCanvas() {
     if (!ctx) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
+      unlockAudio();
       handleKeyDown(stateRef.current, e.key.toLowerCase());
       if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) {
         e.preventDefault();
@@ -196,6 +216,7 @@ export function GameCanvas() {
           height={CANVAS_HEIGHT}
           className="block cursor-pointer"
           onClick={() => {
+            unlockAudio();
             stateRef.current.started = true;
           }}
           style={{
@@ -204,13 +225,25 @@ export function GameCanvas() {
             imageRendering: "pixelated",
           }}
         />
+        <button
+          type="button"
+          onClick={() => {
+            unlockAudio();
+            const next = !musicOn;
+            setMusicOn(next);
+            setMusicEnabled(next);
+          }}
+          className="absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-sm font-semibold text-slate-100 hover:bg-slate-800"
+        >
+          {musicOn ? "Music: On" : "Music: Off"}
+        </button>
       </div>
       <p className="mt-4 max-w-2xl text-center text-sm text-slate-400">
         Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
         Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
-        you find it in the village, F to attack, E for chests, TNT pails, the dragon's key and the princess's cage.
+        you find it in the village, F to attack, E for chests, villagers, the shop, TNT pails, the dragon's key and the
+        princess's cage.
       </p>
-
     </div>
   );
 }

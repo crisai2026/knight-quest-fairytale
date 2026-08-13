@@ -10,19 +10,24 @@ import type {
   Arrow,
   Pail,
   Biome,
+  Npc,
+  CoinDrop,
 } from "./types";
 import {
   LEVELS,
   GROUND_Y,
   FINALE_LEVEL_INDEX,
   BOW_LEVEL_INDEX,
+  VILLAGE_LEVEL_INDEX,
+  VILLAGE_NPCS,
+  SHOP_ITEMS,
   CASTLE_TRIGGER_X,
   DRAGON_ARENA_X,
   CAGE_X,
   type EnemySpawn,
   type LevelDef,
 } from "./levels";
-import { playOwlHoot } from "./audio";
+import { sfx, playMusic, type MusicTrack } from "./audio";
 
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
@@ -97,6 +102,9 @@ function createPlayer(): Player {
     arrowsLeft: 0,
     tnt: 0,
     hasKey: false,
+    coins: 0,
+    items: [],
+    reachedVillage: false,
   };
 }
 
@@ -106,8 +114,8 @@ function createDragon(): Dragon {
     y: 170,
     width: 110,
     height: 70,
-    health: 50,
-    maxHealth: 50,
+    health: 200,
+    maxHealth: 200,
     state: "flying",
     timer: 0,
     fireballs: [],
@@ -127,9 +135,9 @@ function levelPails(level: LevelDef): Pail[] {
 }
 
 /** Builds state for a level, carrying over the player's stats when given. */
-export function loadLevel(levelIndex: number, carry?: Player): GameState {
+export function loadLevel(levelIndex: number, carry?: Player, asVillageHub = false): GameState {
   const level = LEVELS[levelIndex]!;
-  const player = carry ? { ...carry } : createPlayer();
+  const player = carry ? { ...carry, items: [...carry.items] } : createPlayer();
 
   player.x = 60;
   player.y = GROUND_Y - PLAYER_HEIGHT;
@@ -149,6 +157,9 @@ export function loadLevel(levelIndex: number, carry?: Player): GameState {
     player.arrowsLeft = Math.max(player.arrowsLeft, 20);
   }
   if (!player.hasBow) player.weapon = "sword";
+  if (levelIndex === VILLAGE_LEVEL_INDEX) player.reachedVillage = true;
+
+  const villageHub = levelIndex === VILLAGE_LEVEL_INDEX && asVillageHub;
 
   return {
     mode: "playing",
@@ -161,7 +172,7 @@ export function loadLevel(levelIndex: number, carry?: Player): GameState {
     levelBanner: 200,
     levelCompleteTimer: 0,
     player,
-    enemies: level.enemies.map(makeEnemy),
+    enemies: villageHub ? [] : level.enemies.map(makeEnemy),
     chests: level.chests.map((c: Chest) => ({ ...c })),
     platforms: [
       { x: 0, y: GROUND_Y, width: level.width, height: 80 },
@@ -179,12 +190,28 @@ export function loadLevel(levelIndex: number, carry?: Player): GameState {
     cutsceneTimer: 0,
     cutscenePhase: 0,
     castleCutsceneDone: false,
+    dragonIntroDone: false,
     keys: {},
     started: false,
     biome: level.biome,
     biomeLabelTimer: 0,
     owlTimer: 0,
+    coins: [],
+    npcs: villageHub ? VILLAGE_NPCS.map((npc: Npc) => ({ ...npc })) : [],
+    dialogLines: [],
+    dialogIndex: 0,
+    dialogSpeaker: "",
+    villageFree: villageHub,
+    shopMessage: "",
   };
+}
+
+export function respawnInVillage(state: GameState) {
+  const fresh = { ...state.player };
+  fresh.health = fresh.maxHealth;
+  fresh.hunger = fresh.maxHunger;
+  replaceState(state, loadLevel(VILLAGE_LEVEL_INDEX, fresh, true));
+  showMessage(state, "You wake up safe in the village.", 160);
 }
 
 export function createInitialState(): GameState {
@@ -386,8 +413,14 @@ function updatePlayer(state: GameState) {
     state.owlTimer--;
     if (state.owlTimer <= 0) {
       state.owlTimer = 180 + Math.floor(Math.random() * 220);
-      playOwlHoot();
+      sfx.owl();
     }
+  }
+
+  // Village hub: villagers, shop and the exit gate
+  if (state.levelIndex === VILLAGE_LEVEL_INDEX && state.villageFree) {
+    updateNpcs(state);
+    if (state.mode !== "playing") return;
   }
 
   // Castle cutscene then the boss
@@ -399,14 +432,26 @@ function updatePlayer(state: GameState) {
       state.cutscenePhase = 0;
       return;
     }
-    if (
+    const bossReady =
       state.castleCutsceneDone &&
       p.x >= DRAGON_ARENA_X - 200 &&
       state.dragon === null &&
       state.keyDrop === null &&
       state.cage &&
-      !state.cage.open
-    ) {
+      !state.cage.open;
+
+    if (bossReady && !state.dragonIntroDone) {
+      state.dragonIntroDone = true;
+      sfx.dragonRoar();
+      startDialog(state, "The Dragon", [
+        "So. A little knight with a little sword.",
+        "Do you know how many knights I have roasted? Neither do I. I stopped counting.",
+        "The princess stays in her cage. You stay in my belly.",
+        "Enough talk. BURN!",
+      ]);
+      return;
+    }
+    if (bossReady && state.dragonIntroDone) {
       state.dragon = createDragon();
       showMessage(state, "The dragon! Grab TNT from a pail, throw it when it lands.", 180);
     }
@@ -414,17 +459,142 @@ function updatePlayer(state: GameState) {
 
   // Level exit
   if (p.x + p.width >= state.exitX) {
+    if (state.levelIndex === VILLAGE_LEVEL_INDEX && !state.villageFree) {
+      state.mode = "cutscene";
+      state.cutsceneTimer = 0;
+      state.cutscenePhase = 0;
+      return;
+    }
+    if (state.levelIndex === VILLAGE_LEVEL_INDEX) {
+      if (state.keys["e"]) {
+        state.keys["e"] = false;
+        state.mode = "levelcomplete";
+        state.levelCompleteTimer = 0;
+      } else {
+        p.x = state.exitX - p.width - 2;
+        showMessage(state, "Press E to leave the village", 40);
+      }
+      return;
+    }
     state.mode = "levelcomplete";
     state.levelCompleteTimer = 0;
   }
 }
 
+function startDialog(state: GameState, speaker: string, lines: string[]) {
+  state.mode = "dialog";
+  state.dialogSpeaker = speaker;
+  state.dialogLines = lines;
+  state.dialogIndex = 0;
+  state.keys["e"] = false;
+  sfx.talk();
+}
+
+function nearestNpc(state: GameState): Npc | null {
+  const p = state.player;
+  let best: Npc | null = null;
+  let bestDist = 80;
+  for (const npc of state.npcs) {
+    const d = Math.abs(p.x + p.width / 2 - npc.x);
+    if (d < bestDist) {
+      best = npc;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+function updateNpcs(state: GameState) {
+  const npc = nearestNpc(state);
+  if (!npc || !state.keys["e"]) return;
+  state.keys["e"] = false;
+  const p = state.player;
+
+  if (npc.kind === "shop") {
+    state.mode = "shop";
+    state.shopMessage = "";
+    sfx.talk();
+    return;
+  }
+
+  if (npc.done) {
+    startDialog(state, npc.name, [npc.doneLine ?? npc.lines[0]!]);
+    return;
+  }
+
+  // Villager wants an item the knight may be carrying
+  if (npc.wants && !p.items.includes(npc.wants)) {
+    startDialog(state, npc.name, npc.lines);
+    return;
+  }
+
+  const lines = [...npc.lines];
+  if (npc.wants) {
+    p.items = p.items.filter((i) => i !== npc.wants);
+    lines.push(`(You hand over the ${npc.wants}.)`);
+  }
+  if (npc.gives) {
+    p.items.push(npc.gives);
+    lines.push(`You received: ${npc.gives}!`);
+  }
+  if (npc.reward) {
+    p.coins += npc.reward;
+    sfx.coin();
+    lines.push(`You received ${npc.reward} coins!`);
+  }
+  npc.done = true;
+  startDialog(state, npc.name, lines);
+}
+
+function spawnCoins(state: GameState, x: number, y: number, count: number) {
+  for (let i = 0; i < count; i++) {
+    state.coins.push({
+      x: x + (Math.random() - 0.5) * 30,
+      y: y - Math.random() * 20,
+      vy: -3 - Math.random() * 2,
+      value: 1,
+      spin: Math.random() * Math.PI,
+    });
+  }
+}
+
+function updateCoins(state: GameState) {
+  const p = state.player;
+  for (let i = state.coins.length - 1; i >= 0; i--) {
+    const c = state.coins[i]!;
+    c.vy += GRAVITY * 0.4;
+    c.y = Math.min(GROUND_Y - 12, c.y + c.vy);
+    if (c.y >= GROUND_Y - 12) c.vy = 0;
+    c.spin += 0.15;
+    const dx = p.x + p.width / 2 - c.x;
+    const dy = p.y + p.height / 2 - c.y;
+    if (Math.hypot(dx, dy) < 46) {
+      p.coins += c.value;
+      sfx.coin();
+      state.coins.splice(i, 1);
+    }
+  }
+}
+
+const HIT_SOUND: Record<Enemy["kind"], () => void> = {
+  furry: () => sfx.furryHit(),
+  tentacle: () => sfx.tentacleHit(),
+  fish: () => sfx.fishHit(),
+  winged: () => sfx.wingedHit(),
+  insect: () => sfx.insectHit(),
+};
+
 function damageEnemy(state: GameState, e: Enemy, amount: number) {
   e.health -= amount;
   e.flash = 10;
+  HIT_SOUND[e.kind]();
   spawnParticle(state, e.x + e.width / 2, e.y + e.height / 2, "#22c55e", 5, 3);
-  if (e.health <= 0) spawnExplosion(state, e.x + e.width / 2, e.y + e.height / 2);
+  if (e.health <= 0) {
+    spawnExplosion(state, e.x + e.width / 2, e.y + e.height / 2);
+    spawnCoins(state, e.x + e.width / 2, e.y + e.height / 2, 1 + Math.floor(Math.random() * 3));
+  }
 }
+
 
 function updateEnemies(state: GameState) {
   const p = state.player;
@@ -470,6 +640,7 @@ function updateEnemies(state: GameState) {
       p.invulnerable = 40;
       p.vx = p.x < e.x ? -6 : 6;
       p.vy = -4;
+      sfx.hurt();
       showMessage(state, "Ouch!", 60);
     }
 
@@ -531,6 +702,8 @@ function updateChests(state: GameState) {
     if (Math.sqrt(dx * dx + dy * dy) < 60) {
       chest.opened = true;
       used = true;
+      sfx.chest();
+      spawnCoins(state, chest.x + chest.width / 2, chest.y, 3 + Math.floor(Math.random() * 4));
       spawnParticle(state, chest.x + chest.width / 2, chest.y + chest.height / 2, "#eab308", 8, 3);
       if (chest.item === "bandage") {
         p.health = Math.min(p.maxHealth, p.health + 2.5);
@@ -589,6 +762,7 @@ function updateDragon(state: GameState) {
       p.health = Math.max(0, p.health - 1);
       p.invulnerable = 40;
       d.fireballs.splice(i, 1);
+      sfx.hurt();
       showMessage(state, "Fire!", 60);
     }
   }
@@ -603,6 +777,7 @@ function updateDragon(state: GameState) {
       if (d.x < DRAGON_ARENA_X - 100) d.dir = 1;
       if (d.x > DRAGON_ARENA_X + 500) d.dir = -1;
       if (d.timer % 70 === 0) {
+        sfx.dragonFire();
         d.fireballs.push({
           x: d.x + d.width / 2,
           y: d.y + d.height,
@@ -681,21 +856,25 @@ function updateTNT(state: GameState) {
 
     if (t.fuse <= 0 && !t.exploded) {
       t.exploded = true;
+      sfx.explosion();
       spawnExplosion(state, t.x, t.y);
       if (d) {
         const dx = t.x - (d.x + d.width / 2);
         const dy = t.y - (d.y + d.height / 2);
         if (Math.sqrt(dx * dx + dy * dy) < 130) {
-          d.health -= 3;
+          d.health -= 10;
           d.flash = 12;
           spawnParticle(state, d.x + d.width / 2, d.y + d.height / 2, "#f97316", 12, 5);
           if (d.health <= 0) {
+            sfx.dragonRoar(0.55);
+            playMusic(null);
             spawnExplosion(state, d.x + d.width / 2, d.y + d.height / 2);
             spawnExplosion(state, d.x + d.width / 2 + 40, d.y + d.height / 2);
             state.keyDrop = { x: d.x + d.width / 2, y: d.y + d.height / 2, vy: 0, collected: false };
             state.dragon = null;
-            showMessage(state, "The dragon explodes and drops a key!", 200);
+            showMessage(state, "The dragon roars, explodes and drops a key!", 200);
           } else {
+            sfx.dragonRoar(0.3);
             showMessage(state, `Dragon hit! ${d.health} HP left`, 60);
           }
         }
@@ -757,10 +936,33 @@ function updateCamera(state: GameState) {
   state.cameraX = clamp(state.cameraX, 0, Math.max(0, state.worldWidth - CANVAS_WIDTH));
 }
 
+const MAYOR_LINES = [
+  "Mayor Bumbleworth: The monsters are gone — you saved our village!",
+  "Mayor Bumbleworth: You are welcome to look around as long as you want.",
+  "Mayor Bumbleworth: Talk to the villagers, visit the shop, then head right when you're ready.",
+];
+
 function updateCutscene(state: GameState) {
   state.cutsceneTimer++;
   const phaseDuration = 150;
   state.cutscenePhase = Math.floor(state.cutsceneTimer / phaseDuration);
+
+  // The mayor thanks the knight at the end of the village level
+  if (state.levelIndex === VILLAGE_LEVEL_INDEX && !state.villageFree) {
+    const line = MAYOR_LINES[state.cutscenePhase];
+    if (line) {
+      state.message = line;
+      state.messageTimer = 10;
+    } else {
+      state.villageFree = true;
+      state.enemies = [];
+      state.npcs = VILLAGE_NPCS.map((npc: Npc) => ({ ...npc }));
+      state.player.x = state.exitX - 260;
+      state.mode = "playing";
+      showMessage(state, "Free roam: talk to villagers with E. Press E at the gate to leave.", 220);
+    }
+    return;
+  }
 
   // The walk-up-to-the-castle cutscene happens before the cage is opened
   const beforeBoss = state.cage !== null && !state.cage.open;
@@ -792,8 +994,56 @@ function updateCutscene(state: GameState) {
   state.messageTimer = 10;
 }
 
+/** Picks the music that fits what's happening right now. */
+function musicForState(state: GameState): MusicTrack {
+  if (!state.started) return null;
+  if (state.mode === "gameover") return null;
+  if (state.mode === "won" || (state.cage?.open ?? false)) return "beautiful";
+  if (state.dragon) return "rock";
+  if (state.levelIndex === FINALE_LEVEL_INDEX && state.dragonIntroDone && !state.keyDrop) return "rock";
+  if (state.mode === "cutscene" && state.levelIndex === FINALE_LEVEL_INDEX) return null;
+  if (state.biome === "dark") return "creepy";
+  if (state.biome === "fire") return "fire";
+  if (state.biome === "castle") return null;
+  return "cheery";
+}
+
+function buyItem(state: GameState, key: string) {
+  const entry = SHOP_ITEMS.find((i) => i.key === key);
+  if (!entry) return;
+  const p = state.player;
+  if (p.coins < entry.cost) {
+    sfx.deny();
+    state.shopMessage = "Not enough coins!";
+    return;
+  }
+  p.coins -= entry.cost;
+  sfx.buy();
+  if (entry.key === "1") {
+    p.health = p.maxHealth;
+    state.shopMessage = "Patched up — full health!";
+  } else if (entry.key === "2") {
+    p.arrowsLeft += 15;
+    state.shopMessage = "+15 arrows";
+  } else if (entry.key === "3") {
+    p.hunger = p.maxHunger;
+    state.shopMessage = "Belly full!";
+  } else {
+    p.maxHealth += 1;
+    p.health = p.maxHealth;
+    state.shopMessage = "You feel tougher — max health up!";
+  }
+}
+
 export function updateGame(state: GameState) {
+  playMusic(musicForState(state));
+
   if (state.mode === "won" || state.mode === "gameover") return;
+
+  if (state.mode === "dialog" || state.mode === "shop") {
+    updateParticles(state);
+    return;
+  }
 
   if (state.mode === "levelcomplete") {
     state.levelCompleteTimer++;
@@ -813,6 +1063,7 @@ export function updateGame(state: GameState) {
   updateEnemies(state);
   updateArrows(state);
   updateChests(state);
+  updateCoins(state);
   updateDragon(state);
   updateTNT(state);
   updateKeyAndCage(state);
@@ -821,7 +1072,7 @@ export function updateGame(state: GameState) {
 
   if (state.player.health <= 0) {
     state.mode = "gameover";
-    state.message = "Game Over — press Enter to retry this level";
+    state.message = "Game Over";
     state.messageTimer = 300;
   }
 
@@ -834,8 +1085,33 @@ export function handleKeyDown(state: GameState, key: string) {
     restartLevel(state);
     return;
   }
+  if (state.mode === "gameover" && key === "v" && state.player.reachedVillage) {
+    respawnInVillage(state);
+    return;
+  }
   if (state.mode === "won" && (key === "enter" || key === " ")) {
     restartGame(state);
+    return;
+  }
+  if (state.mode === "dialog") {
+    if (key === "e" || key === "enter" || key === " ") {
+      state.dialogIndex++;
+      sfx.talk();
+      if (state.dialogIndex >= state.dialogLines.length) {
+        state.mode = "playing";
+        state.dialogLines = [];
+        state.keys["e"] = false;
+      }
+    }
+    return;
+  }
+  if (state.mode === "shop") {
+    if (key === "escape" || key === "e" || key === "enter") {
+      state.mode = "playing";
+      state.keys["e"] = false;
+      return;
+    }
+    buyItem(state, key);
     return;
   }
   state.keys[key] = true;
@@ -1235,7 +1511,35 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
       ctx.lineTo(x + e.width / 2 + i * 16, y + e.height + 8);
       ctx.stroke();
     }
+    // crab claws
+    const clawOpen = Math.abs(Math.sin(e.wobble * 1.6)) * 8;
+    const clawColor = flash ? "#ffffff" : "#dc2626";
+    for (const side of [-1, 1] as const) {
+      const cx = side > 0 ? x + e.width + 12 : x - 12;
+      const armFrom = side > 0 ? x + e.width - 6 : x + 6;
+      ctx.strokeStyle = clawColor;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(armFrom, y + e.height / 2);
+      ctx.lineTo(cx, y + e.height / 2 - 2);
+      ctx.stroke();
+      ctx.fillStyle = clawColor;
+      ctx.beginPath();
+      ctx.moveTo(cx, y + e.height / 2 - 2);
+      ctx.lineTo(cx + side * 14, y + e.height / 2 - 8 - clawOpen);
+      ctx.lineTo(cx + side * 9, y + e.height / 2 - 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx, y + e.height / 2 - 2);
+      ctx.lineTo(cx + side * 14, y + e.height / 2 + 6 + clawOpen);
+      ctx.lineTo(cx + side * 9, y + e.height / 2 - 2);
+      ctx.closePath();
+      ctx.fill();
+    }
     // antennae
+    ctx.strokeStyle = flash ? "#ffffff" : "#052e16";
+    ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(x + e.width - 8, y + 6);
     ctx.lineTo(x + e.width + 6, y - 8);
@@ -1420,6 +1724,119 @@ function drawKeyDrop(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillRect(x + 18, k.y + 2, 4, 6);
 }
 
+function drawCoins(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const c of state.coins) {
+    const x = c.x - state.cameraX;
+    if (x < -20 || x > CANVAS_WIDTH + 20) continue;
+    const w = Math.abs(Math.cos(c.spin)) * 9 + 2;
+    ctx.fillStyle = "#facc15";
+    ctx.beginPath();
+    ctx.ellipse(x, c.y, w, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#a16207";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+function drawNpc(ctx: CanvasRenderingContext2D, npc: Npc, cameraX: number, active: boolean) {
+  const x = npc.x - cameraX;
+  if (x < -60 || x > CANVAS_WIDTH + 60) return;
+  const y = GROUND_Y - 46;
+  ctx.fillStyle = npc.color;
+  ctx.fillRect(x - 12, y + 14, 24, 32);
+  ctx.fillStyle = "#fcd7b6";
+  ctx.beginPath();
+  ctx.arc(x, y + 6, 11, 0, Math.PI * 2);
+  ctx.fill();
+  if (npc.kind === "mayor") {
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(x - 12, y - 8, 24, 6);
+    ctx.fillRect(x - 6, y - 14, 12, 8);
+  } else if (npc.kind === "shop") {
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(x - 26, y - 34, 52, 18);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("SHOP", x - 16, y - 21);
+  }
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(x - 5, y + 4, 3, 3);
+  ctx.fillRect(x + 3, y + 4, 3, 3);
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "11px sans-serif";
+  ctx.fillText(npc.name, x - ctx.measureText(npc.name).width / 2, y - 40);
+
+  if (active) {
+    ctx.fillStyle = "#facc15";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText("Press E", x - 22, y - 56);
+  }
+}
+
+function drawDialog(ctx: CanvasRenderingContext2D, state: GameState) {
+  const line = state.dialogLines[state.dialogIndex];
+  if (!line) return;
+  const boxH = 110;
+  const y = CANVAS_HEIGHT - boxH - 40;
+  ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+  ctx.fillRect(40, y, CANVAS_WIDTH - 80, boxH);
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(40, y, CANVAS_WIDTH - 80, boxH);
+  ctx.fillStyle = "#facc15";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText(state.dialogSpeaker, 60, y + 28);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "15px sans-serif";
+  const words = line.split(" ");
+  let current = "";
+  let lineY = y + 56;
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (ctx.measureText(test).width > CANVAS_WIDTH - 130) {
+      ctx.fillText(current, 60, lineY);
+      lineY += 20;
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  ctx.fillText(current, 60, lineY);
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px sans-serif";
+  ctx.fillText("Press E to continue", CANVAS_WIDTH - 200, y + boxH - 12);
+}
+
+function drawShop(ctx: CanvasRenderingContext2D, state: GameState) {
+  ctx.fillStyle = "rgba(2, 6, 23, 0.88)";
+  ctx.fillRect(120, 100, CANVAS_WIDTH - 240, 380);
+  ctx.strokeStyle = "#14b8a6";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(120, 100, CANVAS_WIDTH - 240, 380);
+  ctx.fillStyle = "#5eead4";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText("Pim's Village Shop", 150, 140);
+  ctx.fillStyle = "#facc15";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText(`Your coins: ${state.player.coins}`, 150, 172);
+  ctx.font = "15px sans-serif";
+  SHOP_ITEMS.forEach((item, i) => {
+    ctx.fillStyle = state.player.coins >= item.cost ? "#f8fafc" : "#64748b";
+    ctx.fillText(`[${item.key}]  ${item.label}`, 150, 214 + i * 34);
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillText(`${item.cost}c`, CANVAS_WIDTH - 200, 214 + i * 34);
+  });
+  if (state.shopMessage) {
+    ctx.fillStyle = "#4ade80";
+    ctx.fillText(state.shopMessage, 150, 380);
+  }
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Press a number to buy • E or Esc to leave", 150, 440);
+}
+
 function drawParticles(ctx: CanvasRenderingContext2D, state: GameState) {
   for (const pt of state.particles) {
     ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
@@ -1448,6 +1865,10 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
 
   drawCage(ctx, state);
   drawKeyDrop(ctx, state);
+  drawCoins(ctx, state);
+
+  const talkTarget = state.npcs.length ? nearestNpc(state) : null;
+  for (const npc of state.npcs) drawNpc(ctx, npc, state.cameraX, npc === talkTarget && state.mode === "playing");
 
   if (state.dragon) drawDragon(ctx, state.dragon, state.cameraX);
 
@@ -1509,4 +1930,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     const next = LEVELS[state.levelIndex + 1]?.name ?? "";
     ctx.fillText(next, CANVAS_WIDTH / 2 - ctx.measureText(next).width / 2, CANVAS_HEIGHT / 2 + 26);
   }
+
+  if (state.mode === "dialog") drawDialog(ctx, state);
+  if (state.mode === "shop") drawShop(ctx, state);
 }
