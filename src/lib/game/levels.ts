@@ -224,7 +224,7 @@ export const VILLAGE_NPCS: Npc[] = [
     id: "goose",
     kind: "villager",
     name: "Old Man Fenwick",
-    x: 2600,
+    x: 2200,
     color: "#0284c7",
     lines: [
       "In my day we fought dragons with a spoon.",
