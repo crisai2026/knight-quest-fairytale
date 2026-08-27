@@ -275,7 +275,7 @@ export function loadLevel(
   state.sceneIndex = scene ? sceneIndex : 0;
   state.sceneCount = scenes ? scenes.length : 1;
   state.hasBoss = hasBoss;
-  state.levelName = scene ? `${level.short} — ${scene.name}` : level.name;
+  state.levelName = scene ? `${level.short}: ${scene.name}` : level.name;
   state.worldWidth = width;
   state.bossArenaX = arenaXForWidth(width);
   state.swim = level.swim === true;
@@ -1186,8 +1186,10 @@ function updateFlagDrop(state: GameState) {
   }
 
   const poleH = f.big ? FLAG_POLE_HEIGHT * 1.5 : FLAG_POLE_HEIGHT;
-  const near =
-    Math.abs(p.x + p.width / 2 - f.x) < 52 && p.y + p.height > f.y - poleH - 26 && p.y < f.y + 10;
+  // Scene-exit flags only need you to reach them horizontally (you may be swimming high up).
+  const near = f.isSceneExit
+    ? Math.abs(p.x + p.width / 2 - f.x) < 60
+    : Math.abs(p.x + p.width / 2 - f.x) < 52 && p.y + p.height > f.y - poleH - 26 && p.y < f.y + 10;
   if (f.planted && near) {
     f.collected = true;
     sfx.flagRaise();
