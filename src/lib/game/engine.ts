@@ -204,6 +204,7 @@ function baseState(carry: Player, progress: Progress): GameState {
     bossDefeated: false,
     tntList: [],
     keyDrop: null,
+    flagDrop: null,
     cage: null,
     message: "",
     messageTimer: 0,
