@@ -1397,6 +1397,7 @@ export function updateGame(state: GameState) {
   updateBoss(state);
   updateTNT(state);
   updateKeyAndCage(state);
+  updateFlagDrop(state);
   updateParticles(state);
   updateCamera(state);
 
