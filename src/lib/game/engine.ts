@@ -990,8 +990,8 @@ function bossAttack(state: GameState, b: Boss) {
         const nx = dx / dist;
         const ny = dy / dist;
         push({
-          vx: (nx * ca - ny * sa) * 6,
-          vy: (nx * sa + ny * ca) * 6,
+          vx: (nx * ca - ny * sa) * 4,
+          vy: (nx * sa + ny * ca) * 4,
           radius: 9,
           life: 170,
         });
