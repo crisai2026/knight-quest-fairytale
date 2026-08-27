@@ -249,6 +249,17 @@ export type KeyDrop = {
   collected: boolean;
 };
 
+/** Victory flag dropped by a defeated boss; grabbing it ends the level. */
+export type FlagDrop = {
+  x: number;
+  y: number;
+  vy: number;
+  planted: boolean;
+  collected: boolean;
+  color: string;
+  wave: number;
+};
+
 export type Cage = {
   x: number;
   y: number;
