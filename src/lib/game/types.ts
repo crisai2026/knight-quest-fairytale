@@ -75,6 +75,14 @@ export type GameState = {
   cameraX: number;
   levelIndex: number;
   levelName: string;
+  /** Scene within the current chapter (0-based). */
+  sceneIndex: number;
+  /** How many scenes this chapter has (1 for classic single-scene levels). */
+  sceneCount: number;
+  /** Does this scene hold the chapter boss? */
+  hasBoss: boolean;
+  /** Where the boss arena starts in this scene. */
+  bossArenaX: number;
   worldWidth: number;
   exitX: number;
   swim: boolean;
@@ -259,6 +267,10 @@ export type FlagDrop = {
   collected: boolean;
   color: string;
   wave: number;
+  /** Bigger chapter-ending flag dropped by the boss. */
+  big: boolean;
+  /** Scene-exit flag: takes you to the next scene instead of ending the chapter. */
+  isSceneExit: boolean;
 };
 
 export type Cage = {
