@@ -2839,6 +2839,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
 
   drawCage(ctx, state);
   drawKeyDrop(ctx, state);
+  drawFlagDrop(ctx, state);
   drawCoins(ctx, state);
   drawFoods(ctx, state);
 
