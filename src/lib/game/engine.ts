@@ -171,8 +171,12 @@ export function bossArenaX(level: LevelDef) {
   return level.width - 700;
 }
 
-function levelPails(level: LevelDef): Pail[] {
-  const ax = bossArenaX(level);
+function arenaXForWidth(width: number) {
+  return width - 700;
+}
+
+function levelPails(arenaX: number): Pail[] {
+  const ax = arenaX;
   return [
     { x: ax - 180, y: GROUND_Y - 34, width: 34, height: 34 },
     { x: ax + 160, y: GROUND_Y - 34, width: 34, height: 34 },
@@ -187,6 +191,10 @@ function baseState(carry: Player, progress: Progress): GameState {
     cameraX: 0,
     levelIndex: 0,
     levelName: "",
+    sceneIndex: 0,
+    sceneCount: 1,
+    hasBoss: true,
+    bossArenaX: 0,
     worldWidth: 1000,
     exitX: Number.POSITIVE_INFINITY,
     swim: false,
@@ -246,29 +254,58 @@ function refreshPlayer(player: Player) {
   player.hasKey = false;
 }
 
-export function loadLevel(levelIndex: number, carry: Player, progress: Progress): GameState {
+export function loadLevel(
+  levelIndex: number,
+  carry: Player,
+  progress: Progress,
+  sceneIndex = 0
+): GameState {
   const level = LEVELS[levelIndex]!;
+  const scenes = level.scenes;
+  const scene = scenes?.[Math.min(sceneIndex, scenes.length - 1)];
+  const width = scene ? scene.width : level.width;
+  const hasBoss = scene ? scene.boss === true : true;
+
   const player = { ...carry, items: [...carry.items] };
   refreshPlayer(player);
 
   const state = baseState(player, progress);
   state.scene = "level";
   state.levelIndex = levelIndex;
-  state.levelName = level.name;
-  state.worldWidth = level.width;
+  state.sceneIndex = scene ? sceneIndex : 0;
+  state.sceneCount = scenes ? scenes.length : 1;
+  state.hasBoss = hasBoss;
+  state.levelName = scene ? `${level.short} — ${scene.name}` : level.name;
+  state.worldWidth = width;
+  state.bossArenaX = arenaXForWidth(width);
   state.swim = level.swim === true;
   state.biome = level.biome;
-  state.enemies = level.enemies.map(makeEnemy);
-  state.chests = level.chests.map((c: Chest) => ({ ...c }));
+  state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
+  state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
-    { x: 0, y: GROUND_Y, width: level.width, height: 80 },
-    ...level.platforms.map((p: Platform) => ({ ...p })),
+    { x: 0, y: GROUND_Y, width, height: 80 },
+    ...(scene ? scene.platforms : level.platforms).map((p: Platform) => ({ ...p })),
   ];
-  state.pails = levelPails(level);
+  state.pails = hasBoss ? levelPails(state.bossArenaX) : [];
   state.cage =
-    levelIndex === FINAL_LEVEL_INDEX
-      ? { x: level.width - 200, y: GROUND_Y - 96, width: 80, height: 96, open: false }
+    hasBoss && levelIndex === FINAL_LEVEL_INDEX
+      ? { x: width - 200, y: GROUND_Y - 96, width: 80, height: 96, open: false }
       : null;
+
+  if (!hasBoss) {
+    // Scene-exit flag waiting at the end of the stretch.
+    state.flagDrop = {
+      x: width - 160,
+      y: GROUND_Y,
+      vy: 0,
+      planted: true,
+      collected: false,
+      color: FLAG_COLORS[state.biome] ?? "#facc15",
+      wave: 0,
+      big: false,
+      isSceneExit: true,
+    };
+  }
   return state;
 }
 
@@ -335,8 +372,19 @@ export function restartLevel(state: GameState) {
   fresh.health = fresh.maxHealth;
   fresh.hunger = fresh.maxHunger;
   const progress = progressFrom(state);
+  const sceneIndex = state.sceneIndex;
   if (state.scene === "village") replaceState(state, loadVillage(fresh, progress));
-  else replaceState(state, loadLevel(state.levelIndex, fresh, progress));
+  else replaceState(state, loadLevel(state.levelIndex, fresh, progress, sceneIndex));
+}
+
+/** Move on to the next scene of the current chapter, keeping the knight's stats. */
+function advanceScene(state: GameState) {
+  const next = state.sceneIndex + 1;
+  const carry = { ...state.player };
+  const progress = progressFrom(state);
+  const levelIndex = state.levelIndex;
+  saveProgress(state);
+  replaceState(state, loadLevel(levelIndex, carry, progress, next));
 }
 
 export function restartGame(state: GameState) {
@@ -511,8 +559,8 @@ function updatePlayer(state: GameState) {
 
   // Boss trigger near the end of the level
   const level = LEVELS[state.levelIndex]!;
-  const arenaX = bossArenaX(level);
-  if (!state.bossDefeated && state.boss === null && p.x >= arenaX - 240) {
+  const arenaX = state.bossArenaX;
+  if (state.hasBoss && !state.bossDefeated && state.boss === null && p.x >= arenaX - 240) {
     const def = BOSSES[level.boss];
     if (!state.bossIntroDone) {
       state.bossIntroDone = true;
@@ -958,8 +1006,7 @@ function updateBoss(state: GameState) {
   if (!b) return;
   const def = BOSSES[b.kind];
   const p = state.player;
-  const level = LEVELS[state.levelIndex]!;
-  const arenaX = bossArenaX(level);
+  const arenaX = state.bossArenaX;
 
   b.timer++;
   if (b.flash > 0) b.flash--;
@@ -1084,8 +1131,10 @@ function defeatBoss(state: GameState, b: Boss) {
     collected: false,
     color: FLAG_COLORS[state.biome] ?? "#facc15",
     wave: 0,
+    big: true,
+    isSceneExit: false,
   };
-  showMessage(state, `${b.name} defeated! Grab the victory flag!`, 200);
+  showMessage(state, `${b.name} defeated! Grab the big victory flag!`, 200);
 }
 
 const FLAG_COLORS: Partial<Record<Biome, string>> = {
@@ -1123,13 +1172,18 @@ function updateFlagDrop(state: GameState) {
     }
   }
 
+  const poleH = f.big ? FLAG_POLE_HEIGHT * 1.5 : FLAG_POLE_HEIGHT;
   const near =
-    Math.abs(p.x + p.width / 2 - f.x) < 46 && p.y + p.height > f.y - FLAG_POLE_HEIGHT - 20 && p.y < f.y + 10;
+    Math.abs(p.x + p.width / 2 - f.x) < 52 && p.y + p.height > f.y - poleH - 26 && p.y < f.y + 10;
   if (f.planted && near) {
     f.collected = true;
     sfx.flagRaise();
     spawnParticle(state, f.x, f.y - FLAG_POLE_HEIGHT, f.color, 26, 5);
     spawnParticle(state, f.x, f.y - 30, "#ffffff", 16, 4);
+    if (f.isSceneExit) {
+      advanceScene(state);
+      return;
+    }
     state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
     state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
     saveProgress(state);
