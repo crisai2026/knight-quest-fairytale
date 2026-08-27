@@ -1,4 +1,4 @@
-import type { Biome, Chest, ChestItem, EnemyKind, Npc, Platform } from "./types";
+import type { Biome, BossKind, Chest, ChestItem, EnemyKind, Npc, Platform } from "./types";
 
 export const GROUND_Y = 520;
 
@@ -12,12 +12,11 @@ export type EnemySpawn = {
 
 export type LevelDef = {
   name: string;
+  short: string;
   biome: Biome;
-  /** Optional biome bands (used by the finale level), sorted by x ascending. */
-  bands?: { from: number; biome: Biome }[];
   width: number;
   swim?: boolean;
-  finale?: boolean;
+  boss: BossKind;
   platforms: Platform[];
   enemies: EnemySpawn[];
   chests: Chest[];
@@ -27,13 +26,12 @@ function plat(x: number, y: number, width = 150): Platform {
   return { x, y, width, height: 20 };
 }
 
-function chest(x: number, item: ChestItem, onGround = true, y = GROUND_Y - 24): Chest {
+function chest(x: number, item: ChestItem, y = GROUND_Y - 24): Chest {
   const label =
     item === "bandage" ? "Bandage" : item === "firstaid" ? "First Aid" : item === "food" ? "Food" : "Arrows";
-  return { x, y: onGround ? GROUND_Y - 24 : y, width: 32, height: 24, opened: false, item, label };
+  return { x, y, width: 32, height: 24, opened: false, item, label };
 }
 
-/** Shared layout used by level 1 and its night version. */
 const FOREST_PLATFORMS: Platform[] = [
   plat(280, 430, 160),
   plat(560, 360, 140),
@@ -44,11 +42,16 @@ const FOREST_PLATFORMS: Platform[] = [
   plat(1940, 420, 170),
 ];
 
+/** Distance from the right edge where the boss arena starts. */
+export const BOSS_ARENA_MARGIN = 900;
+
 export const LEVELS: LevelDef[] = [
   {
     name: "Level 1 — Sunny Forest",
+    short: "Sunny Forest",
     biome: "sunny",
-    width: 2400,
+    width: 3000,
+    boss: "furryking",
     platforms: FOREST_PLATFORMS.map((p) => ({ ...p })),
     enemies: [
       { kind: "furry", x: 420, patrolStart: 360, patrolEnd: 620 },
@@ -60,8 +63,10 @@ export const LEVELS: LevelDef[] = [
   },
   {
     name: "Level 2 — Night Forest",
+    short: "Night Forest",
     biome: "night",
-    width: 2400,
+    width: 3000,
+    boss: "owl",
     platforms: FOREST_PLATFORMS.map((p) => ({ ...p })),
     enemies: [
       { kind: "tentacle", x: 400, patrolStart: 340, patrolEnd: 620 },
@@ -73,8 +78,10 @@ export const LEVELS: LevelDef[] = [
   },
   {
     name: "Level 3 — Sunny Beach",
+    short: "Beach",
     biome: "beach",
-    width: 2600,
+    width: 3100,
+    boss: "crab",
     platforms: [plat(320, 420), plat(640, 350, 130), plat(960, 420, 170), plat(1320, 360), plat(1700, 420), plat(2060, 350, 140)],
     enemies: [
       { kind: "furry", x: 460, patrolStart: 400, patrolEnd: 680 },
@@ -86,84 +93,141 @@ export const LEVELS: LevelDef[] = [
   },
   {
     name: "Level 4 — The Deep Ocean",
+    short: "Deep Ocean",
     biome: "ocean",
-    width: 2600,
+    width: 3100,
     swim: true,
+    boss: "shark",
     platforms: [plat(340, 440, 180), plat(760, 330, 140), plat(1160, 450, 170), plat(1560, 320, 150), plat(2000, 430, 180)],
     enemies: [
       { kind: "fish", x: 500, patrolStart: 380, patrolEnd: 900, y: 320 },
       { kind: "fish", x: 900, patrolStart: 760, patrolEnd: 1300, y: 240 },
       { kind: "fish", x: 1400, patrolStart: 1240, patrolEnd: 1780, y: 360 },
-      { kind: "fish", x: 1900, patrolStart: 1760, patrolEnd: 2300, y: 260 },
-      { kind: "fish", x: 2200, patrolStart: 2040, patrolEnd: 2520, y: 400 },
+      { kind: "fish", x: 1900, patrolStart: 1760, patrolEnd: 2200, y: 260 },
     ],
     chests: [chest(420, "food"), chest(1220, "bandage"), chest(2060, "firstaid")],
   },
   {
-    name: "Level 5 — Village Under Attack",
-    biome: "village",
-    width: 2800,
-    platforms: [plat(300, 420, 170), plat(640, 340, 150), plat(1000, 420, 180), plat(1400, 330, 150), plat(1800, 420, 170), plat(2200, 350, 150)],
-    enemies: [
-      { kind: "winged", x: 700, patrolStart: 560, patrolEnd: 1060, y: 300 },
-      { kind: "winged", x: 1200, patrolStart: 1040, patrolEnd: 1560, y: 260 },
-      { kind: "winged", x: 1800, patrolStart: 1640, patrolEnd: 2160, y: 310 },
-      { kind: "winged", x: 2300, patrolStart: 2140, patrolEnd: 2660, y: 270 },
-      { kind: "furry", x: 1500, patrolStart: 1440, patrolEnd: 1720 },
+    name: "Level 5 — The High Sky",
+    short: "Sky",
+    biome: "sky",
+    width: 3200,
+    boss: "cloud",
+    platforms: [
+      plat(260, 440, 170),
+      plat(560, 380, 150),
+      plat(880, 320, 150),
+      plat(1200, 400, 160),
+      plat(1520, 330, 150),
+      plat(1860, 400, 170),
+      plat(2180, 340, 150),
     ],
-    chests: [chest(260, "arrows"), chest(1080, "arrows"), chest(1500, "food"), chest(2260, "arrows")],
+    enemies: [
+      { kind: "winged", x: 620, patrolStart: 480, patrolEnd: 1000, y: 290 },
+      { kind: "winged", x: 1160, patrolStart: 1000, patrolEnd: 1520, y: 250 },
+      { kind: "winged", x: 1740, patrolStart: 1580, patrolEnd: 2100, y: 300 },
+      { kind: "winged", x: 2200, patrolStart: 2040, patrolEnd: 2500, y: 260 },
+    ],
+    chests: [chest(280, "arrows"), chest(1080, "arrows"), chest(1560, "food"), chest(2260, "firstaid")],
   },
   {
-    name: "Level 6 — Burning Desert",
+    name: "Level 6 — Wild Jungle",
+    short: "Jungle",
+    biome: "jungle",
+    width: 3200,
+    boss: "gorilla",
+    platforms: [plat(300, 420, 170), plat(660, 340, 150), plat(1020, 420, 180), plat(1420, 330, 150), plat(1820, 420, 170), plat(2200, 350, 150)],
+    enemies: [
+      { kind: "tentacle", x: 420, patrolStart: 340, patrolEnd: 700 },
+      { kind: "insect", x: 980, patrolStart: 880, patrolEnd: 1300 },
+      { kind: "winged", x: 1500, patrolStart: 1340, patrolEnd: 1860, y: 280 },
+      { kind: "insect", x: 2100, patrolStart: 2000, patrolEnd: 2400 },
+    ],
+    chests: [chest(320, "arrows"), chest(1140, "food"), chest(1960, "bandage")],
+  },
+  {
+    name: "Level 7 — Frozen Wastes",
+    short: "Snow Field",
+    biome: "snow",
+    width: 3300,
+    boss: "bear",
+    platforms: [plat(320, 430, 160), plat(700, 350, 140), plat(1080, 430, 170), plat(1460, 340, 140), plat(1860, 420, 170), plat(2260, 360, 150)],
+    enemies: [
+      { kind: "furry", x: 460, patrolStart: 380, patrolEnd: 760 },
+      { kind: "furry", x: 1020, patrolStart: 920, patrolEnd: 1340 },
+      { kind: "winged", x: 1600, patrolStart: 1440, patrolEnd: 1960, y: 280 },
+      { kind: "tentacle", x: 2180, patrolStart: 2080, patrolEnd: 2460 },
+    ],
+    chests: [chest(300, "firstaid"), chest(1160, "food"), chest(2020, "arrows")],
+  },
+  {
+    name: "Level 8 — Burning Desert",
+    short: "Desert",
     biome: "desert",
-    width: 2800,
+    width: 3300,
+    boss: "scorpion",
     platforms: [plat(340, 430, 160), plat(700, 350, 140), plat(1060, 430, 170), plat(1440, 340, 140), plat(1840, 420, 170), plat(2240, 360, 150)],
     enemies: [
       { kind: "insect", x: 460, patrolStart: 380, patrolEnd: 760 },
       { kind: "insect", x: 980, patrolStart: 880, patrolEnd: 1300 },
       { kind: "insect", x: 1560, patrolStart: 1460, patrolEnd: 1880 },
-      { kind: "insect", x: 2100, patrolStart: 2000, patrolEnd: 2420 },
-      { kind: "winged", x: 1700, patrolStart: 1540, patrolEnd: 2060, y: 290 },
+      { kind: "winged", x: 2100, patrolStart: 1940, patrolEnd: 2460, y: 290 },
     ],
     chests: [chest(300, "arrows"), chest(1120, "food"), chest(1900, "firstaid"), chest(2400, "arrows")],
   },
   {
-    name: "Level 7 — The Dragon's Castle",
-    biome: "snow",
-    bands: [
-      { from: 0, biome: "snow" },
-      { from: 1200, biome: "dark" },
-      { from: 2400, biome: "fire" },
-      { from: 3400, biome: "castle" },
+    name: "Level 9 — Snow Mountain",
+    short: "Snow Mountain",
+    biome: "mountain",
+    width: 3400,
+    boss: "wizard",
+    platforms: [plat(300, 430, 150), plat(640, 350, 140), plat(980, 280, 140), plat(1340, 360, 150), plat(1700, 300, 140), plat(2060, 400, 160), plat(2380, 320, 150)],
+    enemies: [
+      { kind: "furry", x: 420, patrolStart: 340, patrolEnd: 700 },
+      { kind: "winged", x: 1000, patrolStart: 840, patrolEnd: 1360, y: 250 },
+      { kind: "tentacle", x: 1600, patrolStart: 1500, patrolEnd: 1880 },
+      { kind: "winged", x: 2200, patrolStart: 2040, patrolEnd: 2560, y: 230 },
+      { kind: "insect", x: 2500, patrolStart: 2400, patrolEnd: 2760 },
     ],
-    width: 5200,
-    finale: true,
-    platforms: [plat(320, 420, 170), plat(700, 350, 150), plat(2600, 420, 160), plat(2960, 350, 150), plat(3600, 430, 160)],
-    enemies: [],
-    chests: [chest(360, "food"), chest(900, "firstaid"), chest(2700, "bandage"), chest(3500, "firstaid")],
+    chests: [chest(280, "firstaid"), chest(1080, "arrows"), chest(1780, "food"), chest(2420, "firstaid")],
+  },
+  {
+    name: "Level 10 — The Dragon's Castle",
+    short: "Dragon's Castle",
+    biome: "castle",
+    width: 4200,
+    boss: "dragon",
+    platforms: [plat(320, 420, 170), plat(700, 350, 150), plat(1100, 420, 160), plat(1500, 340, 150), plat(1900, 420, 160)],
+    enemies: [
+      { kind: "winged", x: 700, patrolStart: 540, patrolEnd: 1060, y: 260 },
+      { kind: "tentacle", x: 1200, patrolStart: 1100, patrolEnd: 1480 },
+      { kind: "winged", x: 1800, patrolStart: 1640, patrolEnd: 2160, y: 240 },
+      { kind: "furry", x: 2300, patrolStart: 2200, patrolEnd: 2560 },
+    ],
+    chests: [chest(300, "firstaid"), chest(1160, "arrows"), chest(1960, "food"), chest(2500, "firstaid")],
   },
 ];
 
-export const FINALE_LEVEL_INDEX = LEVELS.length - 1;
-export const BOW_LEVEL_INDEX = 4; // level 5 (0-based)
-export const VILLAGE_LEVEL_INDEX = 4;
+export const FINAL_LEVEL_INDEX = LEVELS.length - 1;
 
-export const CASTLE_TRIGGER_X = 3400;
-export const DRAGON_ARENA_X = 3900;
-export const CAGE_X = 4800;
+/* ---------------- Village hub ---------------- */
 
-/** Villagers, shopkeeper and mayor — they appear after the village is saved. */
+export const VILLAGE_WIDTH = 2800;
+export const VILLAGE_PLATFORMS: Platform[] = [plat(520, 400, 140), plat(1500, 380, 140)];
+export const MAP_BOARD_X = 380;
+export const PORTAL_X = 2500;
+
 export const VILLAGE_NPCS: Npc[] = [
   {
     id: "mayor",
     kind: "mayor",
     name: "Mayor Bumbleworth",
-    x: 240,
+    x: 200,
     color: "#7c3aed",
     lines: [
-      "Thank you again, brave knight!",
-      "Stay and look around as long as you like.",
-      "Walk to the gate on the right and press E when you are ready to go.",
+      "Welcome back, brave knight!",
+      "Read the map board to pick where to go, then step into the portal.",
+      "The villagers all need a hand — help them and they will pay you in coins.",
     ],
     done: true,
   },
@@ -177,61 +241,44 @@ export const VILLAGE_NPCS: Npc[] = [
     done: true,
   },
   {
-    id: "nan",
-    kind: "villager",
-    name: "Nan Crumb",
-    x: 1240,
-    color: "#f97316",
-    lines: [
-      "I baked eleven loaves today and dropped ten of them.",
-      "Here, take this last loaf of bread before I drop it too.",
-    ],
-    gives: "Bread",
-    doneLine: "Careful, that loaf could stop an arrow.",
-    done: false,
-  },
-  {
     id: "bram",
     kind: "villager",
     name: "Farmer Bram",
-    x: 1760,
+    x: 1150,
     color: "#65a30d",
-    lines: [
-      "My stomach is roaring louder than any monster.",
-      "Bring me bread and I will give you my prize flowers.",
-    ],
-    wants: "Bread",
-    gives: "Flowers",
-    doneLine: "Best bread of my life. My cow agrees.",
+    lines: ["My animals are starving! Help me feed them and I'll pay you."],
+    minigame: "feed",
+    done: false,
+  },
+  {
+    id: "nan",
+    kind: "villager",
+    name: "Nan Crumb",
+    x: 1560,
+    color: "#f97316",
+    lines: ["I keep dropping loaves out of my window. Catch them for coins!"],
+    minigame: "loaves",
     done: false,
   },
   {
     id: "tilda",
     kind: "villager",
     name: "Tilda the Tailor",
-    x: 2320,
+    x: 1960,
     color: "#db2777",
-    lines: [
-      "I need flowers for the victory parade hats.",
-      "Bring me flowers and I will pay you in shiny coins.",
-    ],
-    wants: "Flowers",
-    reward: 40,
-    doneLine: "The hats look magnificent. Slightly flammable, but magnificent.",
+    lines: ["I need flowers for my hats — pick the colours I call out!"],
+    minigame: "flowers",
     done: false,
   },
   {
-    id: "goose",
+    id: "fenwick",
     kind: "villager",
     name: "Old Man Fenwick",
-    x: 2200,
+    x: 2280,
     color: "#0284c7",
-    lines: [
-      "In my day we fought dragons with a spoon.",
-      "A rusty spoon. Uphill. Both ways.",
-    ],
-    doneLine: "Still uphill. Both ways.",
-    done: true,
+    lines: ["In my day we fought dragons with a spoon. Show me you can hit a target."],
+    minigame: "targets",
+    done: false,
   },
 ];
 
