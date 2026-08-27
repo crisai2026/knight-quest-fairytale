@@ -4,29 +4,30 @@ import type {
   Enemy,
   Chest,
   Platform,
-  Dragon,
-  Fireball,
+  Boss,
+  Projectile,
   TNT,
   Arrow,
   Pail,
   Biome,
+  BossKind,
   Npc,
-  CoinDrop,
 } from "./types";
 import {
   LEVELS,
   GROUND_Y,
-  FINALE_LEVEL_INDEX,
-  BOW_LEVEL_INDEX,
-  VILLAGE_LEVEL_INDEX,
+  FINAL_LEVEL_INDEX,
   VILLAGE_NPCS,
+  VILLAGE_WIDTH,
+  VILLAGE_PLATFORMS,
   SHOP_ITEMS,
-  CASTLE_TRIGGER_X,
-  DRAGON_ARENA_X,
-  CAGE_X,
+  MAP_BOARD_X,
+  PORTAL_X,
   type EnemySpawn,
   type LevelDef,
 } from "./levels";
+import { BOSSES, createBoss } from "./bosses";
+import { createMinigame, drawMinigame, updateMinigame } from "./minigames";
 import { sfx, playMusic, type MusicTrack } from "./audio";
 
 export const CANVAS_WIDTH = 800;
@@ -41,19 +42,75 @@ export const PLAYER_HEIGHT = 48;
 
 const SWIM_GRAVITY = 0.14;
 const SWIM_SPEED = 3.2;
+const TNT_DAMAGE = 10;
+const SAVE_KEY = "knight-quest-progress";
 
 const BIOME_NAMES: Record<Biome, string> = {
   sunny: "Sunny Forest",
   night: "Night Forest",
   beach: "Sunny Beach",
   ocean: "The Deep Ocean",
-  village: "The Village",
-  desert: "Burning Desert",
+  sky: "The High Sky",
+  jungle: "Wild Jungle",
   snow: "Frozen Wastes",
+  desert: "Burning Desert",
+  mountain: "Snow Mountain",
+  village: "The Village",
   dark: "Creepy Forest",
   fire: "Fire Landscape",
   castle: "The Dragon's Castle",
 };
+
+/* ---------------- Progress ---------------- */
+
+type Progress = {
+  unlockedLevels: number;
+  coins: number;
+  maxHealth: number;
+  hasBow: boolean;
+  arrows: number;
+  bestScores: Record<string, number>;
+};
+
+function loadProgress(): Progress {
+  const fallback: Progress = { unlockedLevels: 1, coins: 0, maxHealth: 5, hasBow: true, arrows: 20, bestScores: {} };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(SAVE_KEY);
+    if (!raw) return fallback;
+    return { ...fallback, ...(JSON.parse(raw) as Partial<Progress>) };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveProgress(state: GameState) {
+  if (typeof window === "undefined") return;
+  try {
+    const data: Progress = {
+      unlockedLevels: state.unlockedLevels,
+      coins: state.player.coins,
+      maxHealth: state.player.maxHealth,
+      hasBow: state.player.hasBow,
+      arrows: state.player.arrowsLeft,
+      bestScores: state.bestScores,
+    };
+    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch {
+    /* storage disabled — progress simply isn't kept */
+  }
+}
+
+export function resetProgress() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(SAVE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ---------------- Building state ---------------- */
 
 function makeEnemy(spawn: EnemySpawn): Enemy {
   const { kind } = spawn;
@@ -79,7 +136,7 @@ function makeEnemy(spawn: EnemySpawn): Enemy {
   };
 }
 
-function createPlayer(): Player {
+function createPlayer(progress: Progress): Player {
   return {
     x: 60,
     y: GROUND_Y - PLAYER_HEIGHT,
@@ -88,8 +145,8 @@ function createPlayer(): Player {
     vx: 0,
     vy: 0,
     facing: "right",
-    health: 5,
-    maxHealth: 5,
+    health: progress.maxHealth,
+    maxHealth: progress.maxHealth,
     hunger: 5,
     maxHunger: 5,
     onGround: false,
@@ -98,47 +155,78 @@ function createPlayer(): Player {
     attackCooldown: 0,
     invulnerable: 0,
     weapon: "sword",
-    hasBow: false,
-    arrowsLeft: 0,
+    hasBow: progress.hasBow,
+    arrowsLeft: progress.arrows,
     tnt: 0,
     hasKey: false,
-    coins: 0,
+    coins: progress.coins,
     items: [],
-    reachedVillage: false,
+    reachedVillage: true,
   };
 }
 
-function createDragon(): Dragon {
-  return {
-    x: DRAGON_ARENA_X + 260,
-    y: 170,
-    width: 110,
-    height: 70,
-    health: 200,
-    maxHealth: 200,
-    state: "flying",
-    timer: 0,
-    fireballs: [],
-    restCount: 0,
-    flash: 0,
-    dir: -1,
-  };
+export function bossArenaX(level: LevelDef) {
+  return level.width - 700;
 }
 
 function levelPails(level: LevelDef): Pail[] {
-  if (!level.finale) return [];
+  const ax = bossArenaX(level);
   return [
-    { x: DRAGON_ARENA_X - 160, y: GROUND_Y - 34, width: 34, height: 34 },
-    { x: DRAGON_ARENA_X + 180, y: GROUND_Y - 34, width: 34, height: 34 },
-    { x: DRAGON_ARENA_X + 520, y: GROUND_Y - 34, width: 34, height: 34 },
+    { x: ax - 180, y: GROUND_Y - 34, width: 34, height: 34 },
+    { x: ax + 160, y: GROUND_Y - 34, width: 34, height: 34 },
+    { x: ax + 460, y: GROUND_Y - 34, width: 34, height: 34 },
   ];
 }
 
-/** Builds state for a level, carrying over the player's stats when given. */
-export function loadLevel(levelIndex: number, carry?: Player, asVillageHub = false): GameState {
-  const level = LEVELS[levelIndex]!;
-  const player = carry ? { ...carry, items: [...carry.items] } : createPlayer();
+function baseState(carry: Player, progress: Progress): GameState {
+  return {
+    mode: "playing",
+    scene: "level",
+    cameraX: 0,
+    levelIndex: 0,
+    levelName: "",
+    worldWidth: 1000,
+    exitX: Number.POSITIVE_INFINITY,
+    swim: false,
+    levelBanner: 200,
+    levelCompleteTimer: 0,
+    player: carry,
+    enemies: [],
+    chests: [],
+    platforms: [],
+    particles: [],
+    arrows: [],
+    pails: [],
+    boss: null,
+    bossIntroDone: false,
+    bossDefeated: false,
+    tntList: [],
+    keyDrop: null,
+    cage: null,
+    message: "",
+    messageTimer: 0,
+    cutsceneTimer: 0,
+    cutscenePhase: 0,
+    keys: {},
+    started: false,
+    biome: "village",
+    biomeLabelTimer: 0,
+    owlTimer: 0,
+    coins: [],
+    npcs: [],
+    dialogLines: [],
+    dialogIndex: 0,
+    dialogSpeaker: "",
+    shopMessage: "",
+    unlockedLevels: progress.unlockedLevels,
+    selectedLevel: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
+    mapCursor: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
+    minigame: null,
+    bestScores: progress.bestScores,
+  };
+}
 
+function refreshPlayer(player: Player) {
   player.x = 60;
   player.y = GROUND_Y - PLAYER_HEIGHT;
   player.vx = 0;
@@ -151,71 +239,62 @@ export function loadLevel(levelIndex: number, carry?: Player, asVillageHub = fal
   player.invulnerable = 0;
   player.tnt = 0;
   player.hasKey = false;
-
-  if (levelIndex >= BOW_LEVEL_INDEX && !player.hasBow) {
-    player.hasBow = true;
-    player.arrowsLeft = Math.max(player.arrowsLeft, 20);
-  }
-  if (!player.hasBow) player.weapon = "sword";
-  if (levelIndex === VILLAGE_LEVEL_INDEX) player.reachedVillage = true;
-
-  const villageHub = levelIndex === VILLAGE_LEVEL_INDEX && asVillageHub;
-
-  return {
-    mode: "playing",
-    cameraX: 0,
-    levelIndex,
-    levelName: level.name,
-    worldWidth: level.width,
-    exitX: level.finale ? Number.POSITIVE_INFINITY : level.width - 120,
-    swim: level.swim === true,
-    levelBanner: 200,
-    levelCompleteTimer: 0,
-    player,
-    enemies: villageHub ? [] : level.enemies.map(makeEnemy),
-    chests: level.chests.map((c: Chest) => ({ ...c })),
-    platforms: [
-      { x: 0, y: GROUND_Y, width: level.width, height: 80 },
-      ...level.platforms.map((p: Platform) => ({ ...p })),
-    ],
-    particles: [],
-    arrows: [],
-    pails: levelPails(level),
-    dragon: null,
-    tntList: [],
-    keyDrop: null,
-    cage: level.finale ? { x: CAGE_X, y: GROUND_Y - 96, width: 80, height: 96, open: false } : null,
-    message: "",
-    messageTimer: 0,
-    cutsceneTimer: 0,
-    cutscenePhase: 0,
-    castleCutsceneDone: false,
-    dragonIntroDone: false,
-    keys: {},
-    started: false,
-    biome: level.biome,
-    biomeLabelTimer: 0,
-    owlTimer: 0,
-    coins: [],
-    npcs: villageHub ? VILLAGE_NPCS.map((npc: Npc) => ({ ...npc })) : [],
-    dialogLines: [],
-    dialogIndex: 0,
-    dialogSpeaker: "",
-    villageFree: villageHub,
-    shopMessage: "",
-  };
 }
 
-export function respawnInVillage(state: GameState) {
-  const fresh = { ...state.player };
-  fresh.health = fresh.maxHealth;
-  fresh.hunger = fresh.maxHunger;
-  replaceState(state, loadLevel(VILLAGE_LEVEL_INDEX, fresh, true));
-  showMessage(state, "You wake up safe in the village.", 160);
+export function loadLevel(levelIndex: number, carry: Player, progress: Progress): GameState {
+  const level = LEVELS[levelIndex]!;
+  const player = { ...carry, items: [...carry.items] };
+  refreshPlayer(player);
+
+  const state = baseState(player, progress);
+  state.scene = "level";
+  state.levelIndex = levelIndex;
+  state.levelName = level.name;
+  state.worldWidth = level.width;
+  state.swim = level.swim === true;
+  state.biome = level.biome;
+  state.enemies = level.enemies.map(makeEnemy);
+  state.chests = level.chests.map((c: Chest) => ({ ...c }));
+  state.platforms = [
+    { x: 0, y: GROUND_Y, width: level.width, height: 80 },
+    ...level.platforms.map((p: Platform) => ({ ...p })),
+  ];
+  state.pails = levelPails(level);
+  state.cage =
+    levelIndex === FINAL_LEVEL_INDEX
+      ? { x: level.width - 200, y: GROUND_Y - 96, width: 80, height: 96, open: false }
+      : null;
+  return state;
+}
+
+export function loadVillage(carry: Player, progress: Progress): GameState {
+  const player = { ...carry, items: [...carry.items] };
+  refreshPlayer(player);
+  player.health = player.maxHealth;
+  player.hunger = player.maxHunger;
+  player.x = 120;
+
+  const state = baseState(player, progress);
+  state.scene = "village";
+  state.levelName = "The Village";
+  state.worldWidth = VILLAGE_WIDTH;
+  state.biome = "village";
+  state.platforms = [
+    { x: 0, y: GROUND_Y, width: VILLAGE_WIDTH, height: 80 },
+    ...VILLAGE_PLATFORMS.map((p) => ({ ...p })),
+  ];
+  state.npcs = VILLAGE_NPCS.map((npc: Npc) => ({ ...npc }));
+  state.levelBanner = 160;
+  return state;
 }
 
 export function createInitialState(): GameState {
-  return loadLevel(0);
+  const progress = loadProgress();
+  const state = loadVillage(createPlayer(progress), progress);
+  state.mode = "intro";
+  state.cutsceneTimer = 0;
+  state.cutscenePhase = 0;
+  return state;
 }
 
 /** Mutates `state` in place so the caller's ref keeps pointing at live state. */
@@ -225,20 +304,42 @@ function replaceState(state: GameState, next: GameState) {
   state.started = started;
 }
 
-export function goToLevel(state: GameState, levelIndex: number) {
-  replaceState(state, loadLevel(levelIndex, state.player));
+function progressFrom(state: GameState): Progress {
+  return {
+    unlockedLevels: state.unlockedLevels,
+    coins: state.player.coins,
+    maxHealth: state.player.maxHealth,
+    hasBow: state.player.hasBow,
+    arrows: state.player.arrowsLeft,
+    bestScores: state.bestScores,
+  };
+}
+
+export function goToVillage(state: GameState) {
+  saveProgress(state);
+  replaceState(state, loadVillage(state.player, progressFrom(state)));
+}
+
+export function startLevel(state: GameState, levelIndex: number) {
+  saveProgress(state);
+  replaceState(state, loadLevel(levelIndex, state.player, progressFrom(state)));
 }
 
 export function restartLevel(state: GameState) {
   const fresh = { ...state.player };
   fresh.health = fresh.maxHealth;
   fresh.hunger = fresh.maxHunger;
-  replaceState(state, loadLevel(state.levelIndex, fresh));
+  const progress = progressFrom(state);
+  if (state.scene === "village") replaceState(state, loadVillage(fresh, progress));
+  else replaceState(state, loadLevel(state.levelIndex, fresh, progress));
 }
 
 export function restartGame(state: GameState) {
-  replaceState(state, loadLevel(0));
+  const progress = progressFrom(state);
+  replaceState(state, loadVillage(state.player, progress));
 }
+
+/* ---------------- Helpers ---------------- */
 
 function rectsOverlap(
   a: { x: number; y: number; width: number; height: number },
@@ -279,24 +380,24 @@ function spawnExplosion(state: GameState, x: number, y: number) {
   spawnParticle(state, x, y, "#6b7280", 15, 4);
 }
 
-function biomeFor(state: GameState, x: number): Biome {
-  const level = LEVELS[state.levelIndex]!;
-  if (!level.bands) return level.biome;
-  let current = level.bands[0]!.biome;
-  for (const band of level.bands) if (x >= band.from) current = band.biome;
-  return current;
+function startDialog(state: GameState, speaker: string, lines: string[]) {
+  state.mode = "dialog";
+  state.dialogSpeaker = speaker;
+  state.dialogLines = lines;
+  state.dialogIndex = 0;
+  state.keys["e"] = false;
+  sfx.talk();
 }
+
+/* ---------------- Player ---------------- */
 
 function updatePlayer(state: GameState) {
   const p = state.player;
   const keys = state.keys;
   const swim = state.swim;
 
-  let moveLeft = false;
-  let moveRight = false;
-
-  if (keys["a"] || keys["arrowleft"]) moveLeft = true;
-  if (keys["d"] || keys["arrowright"]) moveRight = true;
+  const moveLeft = keys["a"] || keys["arrowleft"];
+  const moveRight = keys["d"] || keys["arrowright"];
 
   const sprinting = keys["shift"] && p.hunger > 0;
   const speed = swim ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
@@ -329,13 +430,10 @@ function updatePlayer(state: GameState) {
     p.vy += GRAVITY;
   }
 
-  // R switches weapon back and forth (bow unlocks in the village)
   if (keys["r"]) {
     if (p.hasBow) {
       p.weapon = p.weapon === "sword" ? "bow" : "sword";
       showMessage(state, p.weapon === "bow" ? "Bow equipped — F to shoot" : "Sword equipped — F to swing", 70);
-    } else {
-      showMessage(state, "You don't have a bow yet!", 80);
     }
     keys["r"] = false;
   }
@@ -399,97 +497,30 @@ function updatePlayer(state: GameState) {
 
   if (p.y > CANVAS_HEIGHT + 100) p.health = 0;
   if (p.invulnerable > 0) p.invulnerable--;
-
-  const nextBiome = biomeFor(state, p.x);
-  if (nextBiome !== state.biome) {
-    state.biome = nextBiome;
-    state.biomeLabelTimer = 180;
-    showMessage(state, BIOME_NAMES[nextBiome], 120);
-  }
   if (state.biomeLabelTimer > 0) state.biomeLabelTimer--;
 
-  // Creepy forest ambience
-  if (state.biome === "dark") {
-    state.owlTimer--;
-    if (state.owlTimer <= 0) {
-      state.owlTimer = 180 + Math.floor(Math.random() * 220);
-      sfx.owl();
-    }
+  if (state.scene === "village") {
+    updateVillage(state);
+    return;
   }
 
-  // Village hub: villagers, shop and the exit gate
-  const atExit = p.x + p.width >= state.exitX - 8;
-  if (state.levelIndex === VILLAGE_LEVEL_INDEX && state.villageFree && !atExit) {
-    updateNpcs(state);
-    if (state.mode !== "playing") return;
-  }
-
-  // Castle cutscene then the boss
-  if (state.levelIndex === FINALE_LEVEL_INDEX) {
-    if (!state.castleCutsceneDone && p.x >= CASTLE_TRIGGER_X) {
-      state.castleCutsceneDone = true;
-      state.mode = "cutscene";
-      state.cutsceneTimer = 0;
-      state.cutscenePhase = 0;
-      return;
-    }
-    const bossReady =
-      state.castleCutsceneDone &&
-      p.x >= DRAGON_ARENA_X - 200 &&
-      state.dragon === null &&
-      state.keyDrop === null &&
-      state.cage &&
-      !state.cage.open;
-
-    if (bossReady && !state.dragonIntroDone) {
-      state.dragonIntroDone = true;
+  // Boss trigger near the end of the level
+  const level = LEVELS[state.levelIndex]!;
+  const arenaX = bossArenaX(level);
+  if (!state.bossDefeated && state.boss === null && p.x >= arenaX - 240) {
+    const def = BOSSES[level.boss];
+    if (!state.bossIntroDone) {
+      state.bossIntroDone = true;
       sfx.dragonRoar();
-      startDialog(state, "The Dragon", [
-        "So. A little knight with a little sword.",
-        "Do you know how many knights I have roasted? Neither do I. I stopped counting.",
-        "The princess stays in her cage. You stay in my belly.",
-        "Enough talk. BURN!",
-      ]);
+      startDialog(state, def.name, def.taunt);
       return;
     }
-    if (bossReady && state.dragonIntroDone) {
-      state.dragon = createDragon();
-      showMessage(state, "The dragon! Grab TNT from a pail, throw it when it lands.", 180);
-    }
-  }
-
-  // Level exit
-  if (atExit) {
-    if (state.levelIndex === VILLAGE_LEVEL_INDEX && !state.villageFree) {
-      state.mode = "cutscene";
-      state.cutsceneTimer = 0;
-      state.cutscenePhase = 0;
-      return;
-    }
-    if (state.levelIndex === VILLAGE_LEVEL_INDEX) {
-      if (state.keys["e"]) {
-        state.keys["e"] = false;
-        state.mode = "levelcomplete";
-        state.levelCompleteTimer = 0;
-      } else {
-        p.x = state.exitX - p.width - 2;
-        showMessage(state, "Press E to leave the village", 40);
-      }
-      return;
-    }
-    state.mode = "levelcomplete";
-    state.levelCompleteTimer = 0;
+    state.boss = createBoss(level.boss, arenaX, GROUND_Y);
+    showMessage(state, `${def.name}! Grab TNT from a pail, throw it while it rests.`, 200);
   }
 }
 
-function startDialog(state: GameState, speaker: string, lines: string[]) {
-  state.mode = "dialog";
-  state.dialogSpeaker = speaker;
-  state.dialogLines = lines;
-  state.dialogIndex = 0;
-  state.keys["e"] = false;
-  sfx.talk();
-}
+/* ---------------- Village hub ---------------- */
 
 function nearestNpc(state: GameState): Npc | null {
   const p = state.player;
@@ -505,11 +536,35 @@ function nearestNpc(state: GameState): Npc | null {
   return best;
 }
 
-function updateNpcs(state: GameState) {
+function updateVillage(state: GameState) {
+  const p = state.player;
+  const cx = p.x + p.width / 2;
+
+  // World map board
+  if (Math.abs(cx - MAP_BOARD_X) < 70) {
+    if (state.keys["e"]) {
+      state.keys["e"] = false;
+      state.mode = "map";
+      state.mapCursor = state.selectedLevel;
+      sfx.talk();
+      return;
+    }
+    showMessage(state, "Press E to read the world map", 20);
+  }
+
+  // Portal
+  if (Math.abs(cx - PORTAL_X) < 80) {
+    if (state.keys["e"]) {
+      state.keys["e"] = false;
+      startLevel(state, state.selectedLevel);
+      return;
+    }
+    showMessage(state, `Press E to enter the ${LEVELS[state.selectedLevel]!.short} portal`, 20);
+  }
+
   const npc = nearestNpc(state);
   if (!npc || !state.keys["e"]) return;
   state.keys["e"] = false;
-  const p = state.player;
 
   if (npc.kind === "shop") {
     state.mode = "shop";
@@ -518,34 +573,18 @@ function updateNpcs(state: GameState) {
     return;
   }
 
-  if (npc.done) {
-    startDialog(state, npc.name, [npc.doneLine ?? npc.lines[0]!]);
+  if (npc.minigame) {
+    const best = state.bestScores[npc.minigame] ?? 0;
+    state.minigame = createMinigame(npc.minigame, best);
+    state.mode = "minigame";
+    sfx.talk();
     return;
   }
 
-  // Villager wants an item the knight may be carrying
-  if (npc.wants && !p.items.includes(npc.wants)) {
-    startDialog(state, npc.name, npc.lines);
-    return;
-  }
-
-  const lines = [...npc.lines];
-  if (npc.wants) {
-    p.items = p.items.filter((i) => i !== npc.wants);
-    lines.push(`(You hand over the ${npc.wants}.)`);
-  }
-  if (npc.gives) {
-    p.items.push(npc.gives);
-    lines.push(`You received: ${npc.gives}!`);
-  }
-  if (npc.reward) {
-    p.coins += npc.reward;
-    sfx.coin();
-    lines.push(`You received ${npc.reward} coins!`);
-  }
-  npc.done = true;
-  startDialog(state, npc.name, lines);
+  startDialog(state, npc.name, npc.lines);
 }
+
+/* ---------------- Coins, enemies, arrows ---------------- */
 
 function spawnCoins(state: GameState, x: number, y: number, count: number) {
   for (let i = 0; i < count; i++) {
@@ -596,7 +635,6 @@ function damageEnemy(state: GameState, e: Enemy, amount: number) {
   }
 }
 
-
 function updateEnemies(state: GameState) {
   const p = state.player;
 
@@ -604,7 +642,6 @@ function updateEnemies(state: GameState) {
     if (e.health <= 0) continue;
 
     if (e.kind === "fish") {
-      // Homes in on the knight through the water
       const dx = p.x + p.width / 2 - (e.x + e.width / 2);
       const dy = p.y + p.height / 2 - (e.y + e.height / 2);
       const dist = Math.hypot(dx, dy) || 1;
@@ -616,6 +653,7 @@ function updateEnemies(state: GameState) {
       e.y += e.vy;
       e.x = clamp(e.x, e.patrolStart - 200, e.patrolEnd + 200);
       e.y = clamp(e.y, 80, GROUND_Y - e.height);
+      e.wobble += 0.2;
     } else if (e.kind === "insect") {
       e.x += e.vx;
       if (e.x <= e.patrolStart || e.x + e.width >= e.patrolEnd) e.vx *= -1;
@@ -626,14 +664,10 @@ function updateEnemies(state: GameState) {
       if (e.x <= e.patrolStart || e.x + e.width >= e.patrolEnd) e.vx *= -1;
       e.x = clamp(e.x, e.patrolStart, e.patrolEnd - e.width);
       e.wobble += e.kind === "winged" ? 0.12 : 0.06;
-      if (e.kind === "winged") {
-        e.y = e.baseY + Math.sin(e.wobble) * 40;
-      } else if (e.kind === "tentacle") {
-        e.y = e.baseY + Math.sin(e.wobble) * 3;
-      }
+      if (e.kind === "winged") e.y = e.baseY + Math.sin(e.wobble) * 40;
+      else if (e.kind === "tentacle") e.y = e.baseY + Math.sin(e.wobble) * 3;
     }
 
-    if (e.kind === "fish") e.wobble += 0.2;
     if (e.flash > 0) e.flash--;
 
     if (rectsOverlap(p, e) && p.invulnerable <= 0) {
@@ -678,15 +712,13 @@ function updateArrows(state: GameState) {
       }
     }
 
-    const d = state.dragon;
-    if (!hit && d && rectsOverlap({ x: a.x - 4, y: a.y - 2, width: 12, height: 5 }, d)) {
+    const b = state.boss;
+    if (!hit && b && rectsOverlap({ x: a.x - 4, y: a.y - 2, width: 12, height: 5 }, b)) {
       spawnParticle(state, a.x, a.y, "#94a3b8", 4, 2);
       hit = true;
     }
 
-    if (hit || a.life <= 0 || a.y > GROUND_Y) {
-      state.arrows.splice(i, 1);
-    }
+    if (hit || a.life <= 0 || a.y > GROUND_Y) state.arrows.splice(i, 1);
   }
   state.enemies = state.enemies.filter((e) => e.health > 0);
 }
@@ -700,7 +732,7 @@ function updateChests(state: GameState) {
     if (chest.opened) continue;
     const dx = p.x + p.width / 2 - (chest.x + chest.width / 2);
     const dy = p.y + p.height / 2 - (chest.y + chest.height / 2);
-    if (Math.sqrt(dx * dx + dy * dy) < 60) {
+    if (Math.hypot(dx, dy) < 60) {
       chest.opened = true;
       used = true;
       sfx.chest();
@@ -715,17 +747,13 @@ function updateChests(state: GameState) {
       } else if (chest.item === "food") {
         p.hunger = p.maxHunger;
         showMessage(state, "Food! Hunger restored");
-      } else if (p.hasBow) {
+      } else {
         p.arrowsLeft += 12;
         showMessage(state, "+12 arrows");
-      } else {
-        p.hunger = p.maxHunger;
-        showMessage(state, "Just a snack — no bow yet");
       }
     }
   }
 
-  // TNT pails
   for (const pail of state.pails) {
     const dx = p.x + p.width / 2 - (pail.x + pail.width / 2);
     if (Math.abs(dx) < 70 && Math.abs(p.y - pail.y) < 90 && p.tnt < 5) {
@@ -738,95 +766,158 @@ function updateChests(state: GameState) {
   if (used) state.keys["e"] = false;
 }
 
-function updateDragon(state: GameState) {
-  if (state.dragon === null) return;
-  const d = state.dragon;
+/* ---------------- Bosses ---------------- */
+
+function bossAttack(state: GameState, b: Boss) {
+  const def = BOSSES[b.kind];
   const p = state.player;
+  const from = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  const push = (proj: Partial<Projectile>) => {
+    b.projectiles.push({
+      x: from.x,
+      y: from.y,
+      vx: 0,
+      vy: 0,
+      radius: 10,
+      life: 200,
+      color: def.projectileColor,
+      shape: def.projectileShape,
+      ...proj,
+    } as Projectile);
+  };
 
-  d.timer++;
-  if (d.flash > 0) d.flash--;
+  const dx = p.x + p.width / 2 - from.x;
+  const dy = p.y + p.height / 2 - from.y;
+  const dist = Math.hypot(dx, dy) || 1;
 
-  for (let i = d.fireballs.length - 1; i >= 0; i--) {
-    const fb = d.fireballs[i]!;
+  switch (b.kind) {
+    case "cloud":
+      // lightning drops straight down onto the knight
+      push({ x: p.x + p.width / 2, y: b.y + b.height, vx: 0, vy: 9, radius: 9, life: 90 });
+      break;
+    case "wizard":
+      push({ vx: (dx / dist) * 5, vy: (dy / dist) * 5, radius: 11, life: 160 });
+      push({ vx: (dx / dist) * 4, vy: (dy / dist) * 4 - 1.6, radius: 8, life: 160 });
+      break;
+    case "gorilla":
+    case "furryking":
+      push({ vx: dx > 0 ? 6 : -6, vy: -7, radius: 12, life: 200 });
+      break;
+    case "owl":
+      push({ vx: (dx / dist) * 6, vy: (dy / dist) * 6, radius: 8, life: 150 });
+      break;
+    case "shark":
+      push({ vx: (dx / dist) * 5.5, vy: (dy / dist) * 5.5, radius: 9, life: 160 });
+      break;
+    case "scorpion":
+      push({ vx: dx > 0 ? 7 : -7, vy: -2, radius: 8, life: 140 });
+      break;
+    case "bear":
+      push({ vx: dx > 0 ? 5.5 : -5.5, vy: -5, radius: 12, life: 200 });
+      break;
+    case "crab":
+      push({ vx: dx > 0 ? 5 : -5, vy: -6, radius: 10, life: 180 });
+      push({ vx: dx > 0 ? 3 : -3, vy: -8, radius: 8, life: 180 });
+      break;
+    default:
+      sfx.dragonFire();
+      push({ vx: dx * 0.006, vy: 3 + Math.random() * 2, radius: 11, life: 180 });
+  }
+}
+
+function updateBoss(state: GameState) {
+  const b = state.boss;
+  if (!b) return;
+  const def = BOSSES[b.kind];
+  const p = state.player;
+  const level = LEVELS[state.levelIndex]!;
+  const arenaX = bossArenaX(level);
+
+  b.timer++;
+  if (b.flash > 0) b.flash--;
+
+  for (let i = b.projectiles.length - 1; i >= 0; i--) {
+    const fb = b.projectiles[i]!;
     fb.x += fb.vx;
     fb.y += fb.vy;
+    if (fb.shape === "rock" || fb.shape === "ball") fb.vy += 0.12;
     fb.life--;
-    if (fb.life <= 0 || fb.y > GROUND_Y) {
-      d.fireballs.splice(i, 1);
+    if (fb.life <= 0 || fb.y > GROUND_Y + 20) {
+      b.projectiles.splice(i, 1);
       continue;
     }
     const cx = p.x + p.width / 2;
     const cy = p.y + p.height / 2;
-    const dx = fb.x - cx;
-    const dy = fb.y - cy;
-    if (Math.sqrt(dx * dx + dy * dy) < fb.radius + p.width / 2 && p.invulnerable <= 0) {
+    if (Math.hypot(fb.x - cx, fb.y - cy) < fb.radius + p.width / 2 && p.invulnerable <= 0) {
       p.health = Math.max(0, p.health - 1);
       p.invulnerable = 40;
-      d.fireballs.splice(i, 1);
+      b.projectiles.splice(i, 1);
       sfx.hurt();
-      showMessage(state, "Fire!", 60);
+      showMessage(state, "Hit!", 50);
     }
   }
 
-  const groundY = GROUND_Y - d.height;
-  const flyY = 160;
-
-  switch (d.state) {
-    case "flying": {
-      d.y = flyY + Math.sin(d.timer * 0.05) * 20;
-      d.x += d.dir * 1.6;
-      if (d.x < DRAGON_ARENA_X - 100) d.dir = 1;
-      if (d.x > DRAGON_ARENA_X + 500) d.dir = -1;
-      if (d.timer % 70 === 0) {
-        sfx.dragonFire();
-        d.fireballs.push({
-          x: d.x + d.width / 2,
-          y: d.y + d.height,
-          vx: (p.x - d.x) * 0.006,
-          vy: 3 + Math.random() * 2,
-          radius: 10,
-          life: 160,
-        } satisfies Fireball);
+  switch (b.state) {
+    case "active": {
+      if (b.flying) {
+        b.y = b.hoverY + Math.sin(b.timer * 0.05) * 22;
+        b.x += b.dir * def.speed;
+        if (b.x < arenaX - 120) b.dir = 1;
+        if (b.x > arenaX + 520) b.dir = -1;
+      } else {
+        // charges towards the knight along the ground
+        const target = p.x + p.width / 2 - b.width / 2;
+        b.dir = target > b.x ? 1 : -1;
+        b.x += b.dir * def.speed;
+        b.x = clamp(b.x, arenaX - 200, arenaX + 620);
+        b.y = b.restY - Math.abs(Math.sin(b.timer * 0.08)) * 6;
+        if (rectsOverlap(p, b) && p.invulnerable <= 0) {
+          p.health = Math.max(0, p.health - 1);
+          p.invulnerable = 50;
+          p.vx = b.dir * 8;
+          p.vy = -6;
+          sfx.hurt();
+        }
       }
-      if (d.timer > 180) {
-        d.state = "landing";
-        d.timer = 0;
+      if (b.timer % def.attackEvery === 0) bossAttack(state, b);
+      if (b.timer > def.activeFrames) {
+        b.state = "landing";
+        b.timer = 0;
       }
       break;
     }
     case "landing": {
-      d.y += (groundY - d.y) * 0.08;
-      if (Math.abs(d.y - groundY) < 2) {
-        d.y = groundY;
-        d.state = "resting";
-        d.timer = 0;
-        showMessage(state, "The dragon landed — throw TNT with E!", 90);
+      b.y += (b.restY - b.y) * 0.09;
+      if (Math.abs(b.y - b.restY) < 2) {
+        b.y = b.restY;
+        b.state = "resting";
+        b.timer = 0;
+        showMessage(state, `${b.name} is tired — throw TNT with E!`, 90);
       }
       break;
     }
     case "resting": {
-      if (d.timer > 420) {
-        d.state = "taking_off";
-        d.timer = 0;
+      if (b.timer > def.restFrames) {
+        b.state = "taking_off";
+        b.timer = 0;
       }
       break;
     }
     case "taking_off": {
-      d.y += (flyY - d.y) * 0.08;
-      if (Math.abs(d.y - flyY) < 2) {
-        d.y = flyY;
-        d.state = "flying";
-        d.timer = 0;
-        d.restCount++;
+      b.y += (b.hoverY - b.y) * 0.09;
+      if (Math.abs(b.y - b.hoverY) < 2) {
+        b.y = b.hoverY;
+        b.state = "active";
+        b.timer = 0;
+        b.restCount++;
       }
       break;
     }
   }
 
-  if (d.state === "resting" && state.keys["e"] && p.tnt > 0 && state.tntList.length < 3) {
-    const dx = p.x + p.width / 2 - (d.x + d.width / 2);
-    const dy = p.y + p.height / 2 - (d.y + d.height / 2);
-    if (Math.sqrt(dx * dx + dy * dy) < 320) {
+  if (b.state === "resting" && state.keys["e"] && p.tnt > 0 && state.tntList.length < 3) {
+    const dist = Math.hypot(p.x + p.width / 2 - (b.x + b.width / 2), p.y + p.height / 2 - (b.y + b.height / 2));
+    if (dist < 340) {
       p.tnt--;
       state.tntList.push({
         x: p.x + p.width / 2,
@@ -841,8 +932,30 @@ function updateDragon(state: GameState) {
   }
 }
 
+function defeatBoss(state: GameState, b: Boss) {
+  sfx.dragonRoar(0.55);
+  spawnExplosion(state, b.x + b.width / 2, b.y + b.height / 2);
+  spawnExplosion(state, b.x + b.width / 2 + 40, b.y + b.height / 2);
+  spawnCoins(state, b.x + b.width / 2, b.y + b.height / 2, 12);
+  state.boss = null;
+  state.bossDefeated = true;
+
+  if (state.levelIndex === FINAL_LEVEL_INDEX) {
+    playMusic(null);
+    state.keyDrop = { x: b.x + b.width / 2, y: b.y + b.height / 2, vy: 0, collected: false };
+    showMessage(state, "The dragon explodes and drops the cage key!", 220);
+    return;
+  }
+
+  state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
+  state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
+  saveProgress(state);
+  state.mode = "levelcomplete";
+  state.levelCompleteTimer = 0;
+}
+
 function updateTNT(state: GameState) {
-  const d = state.dragon;
+  const b = state.boss;
 
   for (let i = state.tntList.length - 1; i >= 0; i--) {
     const t = state.tntList[i]!;
@@ -851,32 +964,23 @@ function updateTNT(state: GameState) {
     t.y += t.vy;
     t.fuse--;
 
-    if (d && !t.exploded && rectsOverlap({ x: t.x - 6, y: t.y - 6, width: 12, height: 12 }, d)) {
-      t.fuse = 0;
-    }
+    if (b && !t.exploded && rectsOverlap({ x: t.x - 6, y: t.y - 6, width: 12, height: 12 }, b)) t.fuse = 0;
 
     if (t.fuse <= 0 && !t.exploded) {
       t.exploded = true;
       sfx.explosion();
       spawnExplosion(state, t.x, t.y);
-      if (d) {
-        const dx = t.x - (d.x + d.width / 2);
-        const dy = t.y - (d.y + d.height / 2);
-        if (Math.sqrt(dx * dx + dy * dy) < 130) {
-          d.health -= 10;
-          d.flash = 12;
-          spawnParticle(state, d.x + d.width / 2, d.y + d.height / 2, "#f97316", 12, 5);
-          if (d.health <= 0) {
-            sfx.dragonRoar(0.55);
-            playMusic(null);
-            spawnExplosion(state, d.x + d.width / 2, d.y + d.height / 2);
-            spawnExplosion(state, d.x + d.width / 2 + 40, d.y + d.height / 2);
-            state.keyDrop = { x: d.x + d.width / 2, y: d.y + d.height / 2, vy: 0, collected: false };
-            state.dragon = null;
-            showMessage(state, "The dragon roars, explodes and drops a key!", 200);
+      if (b) {
+        const dist = Math.hypot(t.x - (b.x + b.width / 2), t.y - (b.y + b.height / 2));
+        if (dist < 140) {
+          b.health -= TNT_DAMAGE;
+          b.flash = 12;
+          spawnParticle(state, b.x + b.width / 2, b.y + b.height / 2, "#f97316", 12, 5);
+          if (b.health <= 0) {
+            defeatBoss(state, b);
           } else {
             sfx.dragonRoar(0.3);
-            showMessage(state, `Dragon hit! ${d.health} HP left`, 60);
+            showMessage(state, `${b.name} hit! ${b.health} HP left`, 60);
           }
         }
       }
@@ -895,9 +999,7 @@ function updateKeyAndCage(state: GameState) {
     k.vy += GRAVITY * 0.4;
     k.y = Math.min(GROUND_Y - 16, k.y + k.vy);
     if (k.y >= GROUND_Y - 16) k.vy = 0;
-    const dx = p.x + p.width / 2 - k.x;
-    const dy = p.y + p.height / 2 - k.y;
-    if (Math.sqrt(dx * dx + dy * dy) < 60 && state.keys["e"]) {
+    if (Math.hypot(p.x + p.width / 2 - k.x, p.y + p.height / 2 - k.y) < 60 && state.keys["e"]) {
       k.collected = true;
       p.hasKey = true;
       state.keys["e"] = false;
@@ -908,8 +1010,7 @@ function updateKeyAndCage(state: GameState) {
 
   const cage = state.cage;
   if (cage && !cage.open && p.hasKey && state.keys["e"]) {
-    const dx = p.x + p.width / 2 - (cage.x + cage.width / 2);
-    if (Math.abs(dx) < 90) {
+    if (Math.abs(p.x + p.width / 2 - (cage.x + cage.width / 2)) < 90) {
       cage.open = true;
       state.keys["e"] = false;
       spawnParticle(state, cage.x + cage.width / 2, cage.y + cage.height / 2, "#facc15", 20, 4);
@@ -937,77 +1038,57 @@ function updateCamera(state: GameState) {
   state.cameraX = clamp(state.cameraX, 0, Math.max(0, state.worldWidth - CANVAS_WIDTH));
 }
 
-const MAYOR_LINES = [
-  "Mayor Bumbleworth: The monsters are gone — you saved our village!",
-  "Mayor Bumbleworth: You are welcome to look around as long as you want.",
-  "Mayor Bumbleworth: Talk to the villagers, visit the shop, then head right when you're ready.",
+/* ---------------- Cutscenes ---------------- */
+
+const INTRO_LINES = [
+  "A quiet morning in the village...",
+  "A shadow falls: the Dragon lands, and beside him stands Zarvok the Wizard.",
+  "Dragon: \"Minions! Take the princess to my castle!\"",
+  "The monsters carry the princess away into the sky.",
+  "Mayor Bumbleworth: \"Brave knight — only you can bring her home!\"",
 ];
+
+function updateIntro(state: GameState) {
+  state.cutsceneTimer++;
+  state.cutscenePhase = Math.floor(state.cutsceneTimer / 190);
+  if (state.cutscenePhase >= INTRO_LINES.length) endIntro(state);
+}
+
+function endIntro(state: GameState) {
+  state.mode = "playing";
+  state.cutsceneTimer = 0;
+  state.cutscenePhase = 0;
+  showMessage(state, "Read the map board, then step into the portal.", 220);
+}
 
 function updateCutscene(state: GameState) {
   state.cutsceneTimer++;
-  const phaseDuration = 150;
-  state.cutscenePhase = Math.floor(state.cutsceneTimer / phaseDuration);
+  state.cutscenePhase = Math.floor(state.cutsceneTimer / 150);
 
-  // The mayor thanks the knight at the end of the village level
-  if (state.levelIndex === VILLAGE_LEVEL_INDEX && !state.villageFree) {
-    const line = MAYOR_LINES[state.cutscenePhase];
-    if (line) {
-      state.message = line;
-      state.messageTimer = 10;
-    } else {
-      state.villageFree = true;
-      state.enemies = [];
-      state.npcs = VILLAGE_NPCS.map((npc: Npc) => ({ ...npc }));
-      state.player.x = state.exitX - 260;
-      state.mode = "playing";
-      showMessage(state, "Free roam: talk to villagers with E. Press E at the gate to leave.", 220);
-    }
-    return;
-  }
-
-  // The walk-up-to-the-castle cutscene happens before the cage is opened
-  const beforeBoss = state.cage !== null && !state.cage.open;
-
-  if (beforeBoss) {
-    state.player.x += 1.4;
-    updateCamera(state);
-    if (state.cutscenePhase === 0) state.message = "The knight reaches the dragon's castle...";
-    else if (state.cutscenePhase === 1) state.message = "A roar shakes the walls.";
-    else {
-      state.mode = "playing";
-      showMessage(state, "Boss fight! Take TNT from a pail with E.", 180);
-      return;
-    }
-    state.messageTimer = 10;
-    return;
-  }
-
-  if (state.cutscenePhase === 0) {
-    state.message = "The cage swings open!";
-  } else if (state.cutscenePhase === 1) {
-    state.message = "Princess: Thank you, brave knight!";
-  } else if (state.cutscenePhase === 2) {
-    state.message = "*kiss*";
-  } else {
+  if (state.cutscenePhase === 0) state.message = "The cage swings open!";
+  else if (state.cutscenePhase === 1) state.message = "Princess: Thank you, brave knight!";
+  else if (state.cutscenePhase === 2) state.message = "*kiss*";
+  else {
     state.mode = "won";
     state.message = "The End";
   }
   state.messageTimer = 10;
 }
 
-/** Picks the music that fits what's happening right now. */
+/* ---------------- Music ---------------- */
+
 function musicForState(state: GameState): MusicTrack {
   if (!state.started) return null;
   if (state.mode === "gameover") return null;
+  if (state.mode === "intro") return "creepy";
   if (state.mode === "won" || (state.cage?.open ?? false)) return "beautiful";
-  if (state.dragon) return "rock";
-  if (state.levelIndex === FINALE_LEVEL_INDEX && state.dragonIntroDone && !state.keyDrop) return "rock";
-  if (state.mode === "cutscene" && state.levelIndex === FINALE_LEVEL_INDEX) return null;
-  if (state.biome === "dark") return "creepy";
-  if (state.biome === "fire") return "fire";
-  if (state.biome === "castle") return null;
+  if (state.boss) return "rock";
+  if (state.biome === "night" || state.biome === "dark" || state.biome === "mountain") return "creepy";
+  if (state.biome === "castle") return "fire";
   return "cheery";
 }
+
+/* ---------------- Shop ---------------- */
 
 function buyItem(state: GameState, key: string) {
   const entry = SHOP_ITEMS.find((i) => i.key === key);
@@ -1034,12 +1115,35 @@ function buyItem(state: GameState, key: string) {
     p.health = p.maxHealth;
     state.shopMessage = "You feel tougher — max health up!";
   }
+  saveProgress(state);
 }
+
+/* ---------------- Main loop ---------------- */
 
 export function updateGame(state: GameState) {
   playMusic(musicForState(state));
 
   if (state.mode === "won" || state.mode === "gameover") return;
+
+  if (state.mode === "intro") {
+    updateIntro(state);
+    return;
+  }
+
+  if (state.mode === "map") return;
+
+  if (state.mode === "minigame") {
+    const m = state.minigame;
+    if (m) {
+      const payout = updateMinigame(m, state.keys);
+      if (payout !== null) {
+        state.player.coins += payout;
+        state.bestScores[m.kind] = m.best;
+        saveProgress(state);
+      }
+    }
+    return;
+  }
 
   if (state.mode === "dialog" || state.mode === "shop") {
     updateParticles(state);
@@ -1049,7 +1153,7 @@ export function updateGame(state: GameState) {
   if (state.mode === "levelcomplete") {
     state.levelCompleteTimer++;
     updateParticles(state);
-    if (state.levelCompleteTimer > 130) goToLevel(state, state.levelIndex + 1);
+    if (state.levelCompleteTimer > 150) goToVillage(state);
     return;
   }
 
@@ -1065,7 +1169,7 @@ export function updateGame(state: GameState) {
   updateArrows(state);
   updateChests(state);
   updateCoins(state);
-  updateDragon(state);
+  updateBoss(state);
   updateTNT(state);
   updateKeyAndCage(state);
   updateParticles(state);
@@ -1082,16 +1186,62 @@ export function updateGame(state: GameState) {
 }
 
 export function handleKeyDown(state: GameState, key: string) {
-  if (state.mode === "gameover" && (key === "enter" || key === " ")) {
-    restartLevel(state);
+  if (state.mode === "intro") {
+    endIntro(state);
+    state.started = true;
     return;
   }
-  if (state.mode === "gameover" && key === "v" && state.player.reachedVillage) {
-    respawnInVillage(state);
+  if (state.mode === "gameover") {
+    if (key === "enter" || key === " ") {
+      restartLevel(state);
+      return;
+    }
+    if (key === "v") {
+      goToVillage(state);
+      return;
+    }
     return;
   }
   if (state.mode === "won" && (key === "enter" || key === " ")) {
     restartGame(state);
+    return;
+  }
+  if (state.mode === "map") {
+    if (key === "a" || key === "arrowleft") state.mapCursor = Math.max(0, state.mapCursor - 1);
+    else if (key === "d" || key === "arrowright") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 1);
+    else if (key === "w" || key === "arrowup") state.mapCursor = Math.max(0, state.mapCursor - 5);
+    else if (key === "s" || key === "arrowdown") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 5);
+    else if (key === "e" || key === "enter" || key === " ") {
+      if (state.mapCursor < state.unlockedLevels) {
+        state.selectedLevel = state.mapCursor;
+        state.mode = "playing";
+        state.keys["e"] = false;
+        sfx.buy();
+        showMessage(state, `Portal set to ${LEVELS[state.selectedLevel]!.short}. Walk right into it!`, 200);
+      } else {
+        sfx.deny();
+      }
+    } else if (key === "escape") {
+      state.mode = "playing";
+      state.keys["e"] = false;
+    }
+    return;
+  }
+  if (state.mode === "minigame") {
+    const m = state.minigame;
+    if (m?.finished && (key === "e" || key === "enter" || key === "escape")) {
+      state.minigame = null;
+      state.mode = "playing";
+      state.keys["e"] = false;
+      return;
+    }
+    if (key === "escape") {
+      state.minigame = null;
+      state.mode = "playing";
+      state.keys["e"] = false;
+      return;
+    }
+    state.keys[key] = true;
     return;
   }
   if (state.mode === "dialog") {
@@ -1130,9 +1280,12 @@ const PLATFORM_COLORS: Record<Biome, [string, string]> = {
   night: ["#1e293b", "#0f172a"],
   beach: ["#fde68a", "#b45309"],
   ocean: ["#0e7490", "#134e4a"],
-  village: ["#a3a3a3", "#57534e"],
-  desert: ["#fbbf24", "#92400e"],
+  sky: ["#e0f2fe", "#93c5fd"],
+  jungle: ["#15803d", "#3f2c14"],
   snow: ["#f8fafc", "#94a3b8"],
+  desert: ["#fbbf24", "#92400e"],
+  mountain: ["#e2e8f0", "#64748b"],
+  village: ["#a3a3a3", "#57534e"],
   dark: ["#1c1917", "#0c0a09"],
   fire: ["#f97316", "#450a0a"],
   castle: ["#475569", "#334155"],
@@ -1146,10 +1299,11 @@ function drawPlatform(ctx: CanvasRenderingContext2D, platform: Platform, cameraX
   ctx.fillRect(platform.x - cameraX, platform.y, platform.width, 6);
 }
 
-function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "night" | "dead") {
-  ctx.fillStyle = style === "green" ? "#7c3f16" : "#1c1917";
+function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "night" | "dead" | "jungle") {
+  ctx.fillStyle = style === "green" || style === "jungle" ? "#7c3f16" : "#1c1917";
   ctx.fillRect(x, GROUND_Y - 90, 14, 90);
-  ctx.fillStyle = style === "green" ? "#16a34a" : style === "night" ? "#14532d" : "#0c0a09";
+  ctx.fillStyle =
+    style === "green" ? "#16a34a" : style === "jungle" ? "#166534" : style === "night" ? "#14532d" : "#0c0a09";
   ctx.beginPath();
   ctx.moveTo(x - 26, GROUND_Y - 80);
   ctx.lineTo(x + 7, GROUND_Y - 150);
@@ -1208,9 +1362,12 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     night: ["#0b1120", "#1e293b"],
     beach: ["#38bdf8", "#fde68a"],
     ocean: ["#0c4a6e", "#082f49"],
-    village: ["#93c5fd", "#d9f99d"],
-    desert: ["#fcd34d", "#fbbf24"],
+    sky: ["#38bdf8", "#e0f2fe"],
+    jungle: ["#14532d", "#65a30d"],
     snow: ["#cbd5e1", "#f8fafc"],
+    desert: ["#fcd34d", "#fbbf24"],
+    mountain: ["#334155", "#e2e8f0"],
+    village: ["#93c5fd", "#d9f99d"],
     dark: ["#020617", "#0f172a"],
     fire: ["#450a0a", "#b45309"],
     castle: ["#1e1b4b", "#312e81"],
@@ -1222,7 +1379,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
 
   const now = Date.now();
 
-  if (b === "sunny" || b === "beach" || b === "village") {
+  if (b === "sunny" || b === "beach" || b === "village" || b === "sky" || b === "jungle") {
     ctx.fillStyle = "#fde047";
     ctx.beginPath();
     ctx.arc(680, 90, 44, 0, Math.PI * 2);
@@ -1237,7 +1394,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     }
   }
 
-  if (b === "night" || b === "dark" || b === "snow") {
+  if (b === "night" || b === "dark" || b === "snow" || b === "mountain") {
     ctx.fillStyle = "#e2e8f0";
     ctx.beginPath();
     ctx.arc(650, 90, 34, 0, Math.PI * 2);
@@ -1249,11 +1406,44 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     }
   }
 
-  if (b === "sunny" || b === "night" || b === "dark") {
-    const style = b === "sunny" ? "green" : b === "night" ? "night" : "dead";
+  if (b === "mountain") {
+    ctx.fillStyle = "#94a3b8";
+    for (let i = 0; i < 8; i++) {
+      const mx = i * 380 - state.cameraX * 0.35;
+      ctx.beginPath();
+      ctx.moveTo(mx - 200, GROUND_Y);
+      ctx.lineTo(mx, 130);
+      ctx.lineTo(mx + 200, GROUND_Y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#f8fafc";
+      ctx.beginPath();
+      ctx.moveTo(mx - 46, 220);
+      ctx.lineTo(mx, 130);
+      ctx.lineTo(mx + 46, 220);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#94a3b8";
+    }
+  }
+
+  if (b === "sunny" || b === "night" || b === "dark" || b === "jungle") {
+    const style = b === "sunny" ? "green" : b === "night" ? "night" : b === "jungle" ? "jungle" : "dead";
     for (let i = 0; i < 24; i++) {
       const sx = i * 320 + 120 - state.cameraX * 0.7;
       if (sx > -80 && sx < CANVAS_WIDTH + 80) drawTree(ctx, sx, style);
+    }
+  }
+
+  if (b === "jungle") {
+    ctx.strokeStyle = "rgba(21,128,61,0.7)";
+    ctx.lineWidth = 6;
+    for (let i = 0; i < 12; i++) {
+      const vx = ((i * 190 - state.cameraX * 0.5) % 1400) - 100;
+      ctx.beginPath();
+      ctx.moveTo(vx, 0);
+      ctx.quadraticCurveTo(vx + 20, 90, vx - 10, 190);
+      ctx.stroke();
     }
   }
 
@@ -1292,7 +1482,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
   if (b === "ocean") {
     ctx.fillStyle = "rgba(255,255,255,0.06)";
     for (let i = 0; i < 6; i++) {
-      const sx = i * 200 - (state.cameraX * 0.3) % 200;
+      const sx = i * 200 - ((state.cameraX * 0.3) % 200);
       ctx.beginPath();
       ctx.moveTo(sx, 0);
       ctx.lineTo(sx + 70, 0);
@@ -1311,7 +1501,18 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     }
   }
 
-  if (b === "snow") {
+  if (b === "sky") {
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    for (let i = 0; i < 10; i++) {
+      const cx = ((i * 260 - state.cameraX * 0.5) % 2200) - 200;
+      const cy = 200 + (i % 4) * 70;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 70, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (b === "snow" || b === "mountain") {
     ctx.fillStyle = "#ffffff";
     for (let i = 0; i < 70; i++) {
       const sx = (i * 137 + Math.sin(now / 900 + i) * 30 - state.cameraX * 0.3) % CANVAS_WIDTH;
@@ -1325,7 +1526,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     for (let i = 0; i < 30; i++) {
       const t = (now / 20 + i * 40) % 400;
       ctx.globalAlpha = 0.5;
-      ctx.fillRect(((i * 97 - state.cameraX * 0.5) % CANVAS_WIDTH + CANVAS_WIDTH) % CANVAS_WIDTH, GROUND_Y - t, 3, 6);
+      ctx.fillRect((((i * 97 - state.cameraX * 0.5) % CANVAS_WIDTH) + CANVAS_WIDTH) % CANVAS_WIDTH, GROUND_Y - t, 3, 6);
       ctx.globalAlpha = 1;
     }
   }
@@ -1333,7 +1534,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
   if (b === "castle") {
     ctx.fillStyle = "#111827";
     for (let i = 0; i < 6; i++) {
-      const tx = i * 170 - (state.cameraX * 0.4) % 170;
+      const tx = i * 170 - ((state.cameraX * 0.4) % 170);
       ctx.fillRect(tx, 150, 90, GROUND_Y - 150);
       ctx.fillRect(tx - 10, 120, 110, 34);
     }
@@ -1355,9 +1556,12 @@ function drawGroundStrip(ctx: CanvasRenderingContext2D, state: GameState) {
     night: ["#0b1120", "#1e293b"],
     beach: ["#d97706", "#fde68a"],
     ocean: ["#164e63", "#0891b2"],
-    village: ["#57534e", "#a3a3a3"],
-    desert: ["#b45309", "#fbbf24"],
+    sky: ["#bae6fd", "#f8fafc"],
+    jungle: ["#14532d", "#4d7c0f"],
     snow: ["#94a3b8", "#ffffff"],
+    desert: ["#b45309", "#fbbf24"],
+    mountain: ["#64748b", "#f1f5f9"],
+    village: ["#57534e", "#a3a3a3"],
     dark: ["#0c0a09", "#1c1917"],
     fire: ["#7f1d1d", "#f97316"],
     castle: ["#1f2937", "#4b5563"],
@@ -1366,21 +1570,6 @@ function drawGroundStrip(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
   ctx.fillStyle = ground[b][1];
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, 6);
-}
-
-function drawExitGate(ctx: CanvasRenderingContext2D, state: GameState) {
-  if (!Number.isFinite(state.exitX)) return;
-  const x = state.exitX - state.cameraX;
-  if (x < -80 || x > CANVAS_WIDTH + 80) return;
-  ctx.fillStyle = "#78350f";
-  ctx.fillRect(x, GROUND_Y - 120, 12, 120);
-  ctx.fillRect(x + 78, GROUND_Y - 120, 12, 120);
-  ctx.fillRect(x, GROUND_Y - 132, 90, 14);
-  ctx.fillStyle = "rgba(250, 204, 21, 0.35)";
-  ctx.fillRect(x + 12, GROUND_Y - 118, 66, 118);
-  ctx.fillStyle = "#facc15";
-  ctx.font = "bold 12px sans-serif";
-  ctx.fillText("EXIT", x + 26, GROUND_Y - 138);
 }
 
 function drawPlayer(ctx: CanvasRenderingContext2D, p: Player, cameraX: number) {
@@ -1402,13 +1591,12 @@ function drawPlayer(ctx: CanvasRenderingContext2D, p: Player, cameraX: number) {
   ctx.fillRect(x + p.width / 2 - 2, y - 6, 4, 8);
 
   if (p.weapon === "sword") {
+    ctx.fillStyle = "#e5e7eb";
     if (p.attacking) {
-      ctx.fillStyle = "#e5e7eb";
       const reach = 46;
       const ax = p.facing === "right" ? x + p.width - 4 : x - reach + 4;
       ctx.fillRect(ax, y + 16, reach, 6);
     } else {
-      ctx.fillStyle = "#e5e7eb";
       ctx.fillRect(p.facing === "right" ? x + p.width : x - 4, y + 10, 4, 24);
     }
   } else {
@@ -1416,7 +1604,13 @@ function drawPlayer(ctx: CanvasRenderingContext2D, p: Player, cameraX: number) {
     ctx.lineWidth = 3;
     ctx.beginPath();
     const bx = p.facing === "right" ? x + p.width + 2 : x - 2;
-    ctx.arc(bx, y + 24, 14, p.facing === "right" ? -Math.PI / 2 : Math.PI / 2, p.facing === "right" ? Math.PI / 2 : (3 * Math.PI) / 2);
+    ctx.arc(
+      bx,
+      y + 24,
+      14,
+      p.facing === "right" ? -Math.PI / 2 : Math.PI / 2,
+      p.facing === "right" ? Math.PI / 2 : (3 * Math.PI) / 2
+    );
     ctx.stroke();
   }
 }
@@ -1478,7 +1672,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
     ctx.beginPath();
     ctx.ellipse(x + e.width / 2, y + e.height / 2, e.width / 2, e.height / 2, 0, 0, Math.PI * 2);
     ctx.fill();
-    // tail
     ctx.beginPath();
     const tailX = dir > 0 ? x : x + e.width;
     ctx.moveTo(tailX, y + e.height / 2);
@@ -1486,7 +1679,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
     ctx.lineTo(tailX - dir * 16, y + e.height + 2 - Math.sin(e.wobble) * 3);
     ctx.closePath();
     ctx.fill();
-    // teeth + eye
     ctx.fillStyle = "#f8fafc";
     for (let i = 0; i < 4; i++) {
       const tx = dir > 0 ? x + e.width - 6 - i * 6 : x + 2 + i * 6;
@@ -1512,7 +1704,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
       ctx.lineTo(x + e.width / 2 + i * 16, y + e.height + 8);
       ctx.stroke();
     }
-    // crab claws
     const clawOpen = Math.abs(Math.sin(e.wobble * 1.6)) * 8;
     const clawColor = flash ? "#ffffff" : "#dc2626";
     for (const side of [-1, 1] as const) {
@@ -1538,7 +1729,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, cameraX: number) {
       ctx.closePath();
       ctx.fill();
     }
-    // antennae
     ctx.strokeStyle = flash ? "#ffffff" : "#052e16";
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -1609,60 +1799,322 @@ function drawPail(ctx: CanvasRenderingContext2D, pail: Pail, cameraX: number) {
   ctx.fillText("TNT", x + 6, y + 22);
 }
 
-function drawDragon(ctx: CanvasRenderingContext2D, d: Dragon, cameraX: number) {
-  const x = d.x - cameraX;
-  const y = d.y;
-
-  if (d.flash > 0 && Math.floor(Date.now() / 60) % 2 === 0) return;
-
-  ctx.fillStyle = "#166534";
+/** Small head-only portrait, used on the map board and inside the portal. */
+export function drawBossFace(ctx: CanvasRenderingContext2D, kind: BossKind, cx: number, cy: number, r: number) {
+  const def = BOSSES[kind];
+  ctx.fillStyle = def.color;
   ctx.beginPath();
-  ctx.moveTo(x + 10, y + 10);
-  ctx.lineTo(x + d.width - 20, y - 26);
-  ctx.lineTo(x + d.width - 40, y + 14);
-  ctx.closePath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#16a34a";
-  ctx.fillRect(x, y, d.width, d.height);
-
-  ctx.fillStyle = "#dc2626";
-  ctx.beginPath();
-  ctx.moveTo(x + d.width, y + 16);
-  ctx.lineTo(x + d.width + 28, y + 6);
-  ctx.lineTo(x + d.width, y + 32);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "#facc15";
-  ctx.fillRect(x + d.width - 18, y + 10, 10, 10);
-  ctx.fillRect(x + d.width - 18, y + 36, 10, 10);
-
-  ctx.fillStyle = "#fca5a5";
-  for (let i = 0; i < d.width; i += 16) {
+  ctx.fillStyle = def.accent;
+  if (kind === "furryking" || kind === "bear" || kind === "gorilla") {
     ctx.beginPath();
-    ctx.moveTo(x + i + 8, y + d.height);
-    ctx.lineTo(x + i, y + d.height + 12);
-    ctx.lineTo(x + i + 16, y + d.height + 12);
+    ctx.moveTo(cx - r * 0.8, cy - r * 0.3);
+    ctx.lineTo(cx - r * 1.2, cy - r * 1.2);
+    ctx.lineTo(cx - r * 0.2, cy - r * 0.8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx + r * 0.8, cy - r * 0.3);
+    ctx.lineTo(cx + r * 1.2, cy - r * 1.2);
+    ctx.lineTo(cx + r * 0.2, cy - r * 0.8);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === "owl") {
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.4, cy - r * 0.1, r * 0.38, 0, Math.PI * 2);
+    ctx.arc(cx + r * 0.4, cy - r * 0.1, r * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === "crab" || kind === "scorpion") {
+    ctx.beginPath();
+    ctx.arc(cx - r * 0.7, cy - r * 0.7, r * 0.3, 0, Math.PI * 2);
+    ctx.arc(cx + r * 0.7, cy - r * 0.7, r * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === "shark") {
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy + r * 0.2);
+    ctx.lineTo(cx + r, cy + r * 0.2);
+    ctx.lineTo(cx, cy + r * 0.9);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === "cloud") {
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.2, cy - r * 0.6);
+    ctx.lineTo(cx + r * 0.2, cy);
+    ctx.lineTo(cx - r * 0.05, cy);
+    ctx.lineTo(cx + r * 0.25, cy + r * 0.7);
+    ctx.lineTo(cx - r * 0.15, cy + r * 0.1);
+    ctx.lineTo(cx + r * 0.05, cy + r * 0.1);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === "wizard") {
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy - r * 0.4);
+    ctx.lineTo(cx, cy - r * 1.8);
+    ctx.lineTo(cx + r, cy - r * 0.4);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === "dragon") {
+    ctx.beginPath();
+    ctx.moveTo(cx + r * 0.6, cy);
+    ctx.lineTo(cx + r * 1.5, cy - r * 0.3);
+    ctx.lineTo(cx + r * 0.6, cy + r * 0.6);
     ctx.closePath();
     ctx.fill();
   }
 
-  for (const fb of d.fireballs) {
-    ctx.fillStyle = "#f97316";
-    ctx.beginPath();
-    ctx.arc(fb.x - cameraX, fb.y, fb.radius, 0, Math.PI * 2);
-    ctx.fill();
+  ctx.fillStyle = "#fde047";
+  ctx.fillRect(cx - r * 0.5, cy - r * 0.25, r * 0.3, r * 0.3);
+  ctx.fillRect(cx + r * 0.2, cy - r * 0.25, r * 0.3, r * 0.3);
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(cx - r * 0.42, cy - r * 0.18, r * 0.14, r * 0.16);
+  ctx.fillRect(cx + r * 0.28, cy - r * 0.18, r * 0.14, r * 0.16);
+}
+
+function drawBoss(ctx: CanvasRenderingContext2D, b: Boss, cameraX: number) {
+  const def = BOSSES[b.kind];
+  const x = b.x - cameraX;
+  const y = b.y;
+  const w = b.width;
+  const h = b.height;
+
+  if (b.flash > 0 && Math.floor(Date.now() / 60) % 2 === 0) {
+    // still draw projectiles when flashing
+  } else {
+    ctx.fillStyle = def.color;
+
+    if (b.kind === "owl") {
+      const flap = Math.sin(b.timer * 0.14) * 16;
+      ctx.beginPath();
+      ctx.moveTo(x, y + h / 2);
+      ctx.lineTo(x - 46, y + 6 - flap);
+      ctx.lineTo(x + 6, y + h - 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + w, y + h / 2);
+      ctx.lineTo(x + w + 46, y + 6 - flap);
+      ctx.lineTo(x + w - 6, y + h - 6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawBossFace(ctx, b.kind, x + w / 2, y + h / 2 - 6, 22);
+    } else if (b.kind === "cloud") {
+      ctx.fillStyle = def.color;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.arc(x + 18 + i * 24, y + h / 2 + Math.sin(b.timer * 0.05 + i) * 5, 30, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(x + w / 2 - 30, y + h / 2 - 6, 12, 12);
+      ctx.fillRect(x + w / 2 + 16, y + h / 2 - 6, 12, 12);
+      ctx.fillStyle = def.accent;
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2 - 8, y + h);
+      ctx.lineTo(x + w / 2 + 10, y + h + 26);
+      ctx.lineTo(x + w / 2, y + h + 26);
+      ctx.lineTo(x + w / 2 + 16, y + h + 58);
+      ctx.lineTo(x + w / 2 - 12, y + h + 22);
+      ctx.lineTo(x + w / 2 - 2, y + h + 22);
+      ctx.closePath();
+      ctx.fill();
+    } else if (b.kind === "shark") {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + w, y + h / 2);
+      ctx.lineTo(x + w + 40, y - 10);
+      ctx.lineTo(x + w + 40, y + h + 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2 - 16, y);
+      ctx.lineTo(x + w / 2, y - 34);
+      ctx.lineTo(x + w / 2 + 16, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = def.accent;
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(x + 6 + i * 12, y + h / 2 + 6);
+        ctx.lineTo(x + 12 + i * 12, y + h / 2 + 20);
+        ctx.lineTo(x + 18 + i * 12, y + h / 2 + 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(x + 18, y + h / 2 - 12, 10, 10);
+    } else if (b.kind === "crab") {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2 + 6, w / 2, h / 2, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.fillRect(x, y + h / 2 + 4, w, h / 2 - 4);
+      const claw = Math.abs(Math.sin(b.timer * 0.1)) * 14;
+      ctx.fillStyle = def.color;
+      for (const side of [-1, 1] as const) {
+        const cx = side > 0 ? x + w + 30 : x - 30;
+        ctx.fillRect(side > 0 ? x + w : x - 34, y + h / 2, 34, 10);
+        ctx.beginPath();
+        ctx.moveTo(cx, y + h / 2);
+        ctx.lineTo(cx + side * 32, y + h / 2 - 12 - claw);
+        ctx.lineTo(cx + side * 16, y + h / 2 + 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx, y + h / 2 + 6);
+        ctx.lineTo(cx + side * 32, y + h / 2 + 20 + claw);
+        ctx.lineTo(cx + side * 16, y + h / 2 + 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = "#fde047";
+      ctx.fillRect(x + w / 2 - 24, y + 8, 12, 12);
+      ctx.fillRect(x + w / 2 + 12, y + 8, 12, 12);
+    } else if (b.kind === "scorpion") {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2 + 10, w / 2, h / 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = def.color;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(x + w - 10, y + h / 2);
+      ctx.quadraticCurveTo(x + w + 60, y + 10, x + w + 10, y - 30);
+      ctx.stroke();
+      ctx.fillStyle = def.accent;
+      ctx.beginPath();
+      ctx.arc(x + w + 6, y - 36, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = def.color;
+      for (const side of [0, 1]) {
+        ctx.fillRect(x - 30 + side * 6, y + h / 2, 34, 8);
+        ctx.beginPath();
+        ctx.arc(x - 32, y + h / 2 + 4 - side * 12, 12, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#fde047";
+      ctx.fillRect(x + 22, y + h / 2 - 4, 10, 10);
+      ctx.fillRect(x + 42, y + h / 2 - 4, 10, 10);
+    } else if (b.kind === "wizard") {
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2, y + 20);
+      ctx.lineTo(x + w + 6, y + h);
+      ctx.lineTo(x - 6, y + h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#fcd7b6";
+      ctx.beginPath();
+      ctx.arc(x + w / 2, y + 22, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      ctx.moveTo(x + w / 2 - 24, y + 14);
+      ctx.lineTo(x + w / 2, y - 44);
+      ctx.lineTo(x + w / 2 + 24, y + 14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#e2e8f0";
+      ctx.fillRect(x + w / 2 - 6, y + 30, 12, 26);
+      ctx.strokeStyle = "#78350f";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x + w + 4, y + h);
+      ctx.lineTo(x + w - 6, y - 10);
+      ctx.stroke();
+      ctx.fillStyle = def.accent;
+      ctx.beginPath();
+      ctx.arc(x + w - 6, y - 16, 11 + Math.sin(b.timer * 0.15) * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#0f172a";
+      ctx.fillRect(x + w / 2 - 9, y + 18, 5, 5);
+      ctx.fillRect(x + w / 2 + 4, y + 18, 5, 5);
+    } else if (b.kind === "dragon") {
+      ctx.fillStyle = def.color;
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y + 10);
+      ctx.lineTo(x + w - 20, y - 30);
+      ctx.lineTo(x + w - 46, y + 16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = def.accent;
+      ctx.beginPath();
+      ctx.moveTo(x + w, y + 16);
+      ctx.lineTo(x + w + 32, y + 6);
+      ctx.lineTo(x + w, y + 36);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(x + w - 20, y + 12, 11, 11);
+      ctx.fillRect(x + w - 20, y + 40, 11, 11);
+      ctx.fillStyle = "#fca5a5";
+      for (let i = 0; i < w; i += 16) {
+        ctx.beginPath();
+        ctx.moveTo(x + i + 8, y + h);
+        ctx.lineTo(x + i, y + h + 12);
+        ctx.lineTo(x + i + 16, y + h + 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else {
+      // furryking, gorilla, bear — big shaggy bruisers
+      ctx.fillStyle = def.color;
+      ctx.fillRect(x, y + 14, w, h - 14);
+      ctx.fillStyle = def.accent;
+      for (let i = 0; i < w; i += 10) {
+        ctx.beginPath();
+        ctx.moveTo(x + i, y + 16);
+        ctx.lineTo(x + i + 5, y + 2);
+        ctx.lineTo(x + i + 10, y + 16);
+        ctx.closePath();
+        ctx.fill();
+      }
+      const swing = Math.sin(b.timer * 0.12) * 12;
+      ctx.fillStyle = def.color;
+      ctx.fillRect(x - 18, y + 26 + swing, 22, 40);
+      ctx.fillRect(x + w - 4, y + 26 - swing, 22, 40);
+      drawBossFace(ctx, b.kind, x + w / 2, y + 34, 22);
+    }
+  }
+
+  for (const fb of b.projectiles) {
+    const px = fb.x - cameraX;
+    ctx.fillStyle = fb.color;
+    if (fb.shape === "bolt") {
+      ctx.beginPath();
+      ctx.moveTo(px - 6, fb.y - 12);
+      ctx.lineTo(px + 6, fb.y);
+      ctx.lineTo(px, fb.y);
+      ctx.lineTo(px + 8, fb.y + 14);
+      ctx.lineTo(px - 4, fb.y + 2);
+      ctx.lineTo(px + 2, fb.y + 2);
+      ctx.closePath();
+      ctx.fill();
+    } else if (fb.shape === "feather") {
+      ctx.beginPath();
+      ctx.ellipse(px, fb.y, fb.radius + 4, fb.radius / 2, Math.atan2(fb.vy, fb.vx), 0, Math.PI * 2);
+      ctx.fill();
+    } else if (fb.shape === "rock") {
+      ctx.fillRect(px - fb.radius, fb.y - fb.radius, fb.radius * 2, fb.radius * 2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(px, fb.y, fb.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
 function drawTNT(ctx: CanvasRenderingContext2D, t: TNT, cameraX: number) {
   const x = t.x - cameraX;
-  const y = t.y;
   ctx.fillStyle = "#dc2626";
-  ctx.fillRect(x - 6, y - 6, 12, 12);
+  ctx.fillRect(x - 6, t.y - 6, 12, 12);
   ctx.fillStyle = "#facc15";
-  ctx.fillRect(x - 2, y - 10, 4, 6);
+  ctx.fillRect(x - 2, t.y - 10, 4, 6);
 }
 
 function drawArrow(ctx: CanvasRenderingContext2D, a: Arrow, cameraX: number) {
@@ -1765,15 +2217,228 @@ function drawNpc(ctx: CanvasRenderingContext2D, npc: Npc, cameraX: number, activ
   ctx.fillRect(x - 5, y + 4, 3, 3);
   ctx.fillRect(x + 3, y + 4, 3, 3);
 
-  ctx.fillStyle = "#e2e8f0";
+  ctx.fillStyle = "#0f172a";
   ctx.font = "11px sans-serif";
   ctx.fillText(npc.name, x - ctx.measureText(npc.name).width / 2, y - 40);
 
   if (active) {
-    ctx.fillStyle = "#facc15";
+    ctx.fillStyle = "#b45309";
     ctx.font = "bold 13px sans-serif";
     ctx.fillText("Press E", x - 22, y - 56);
   }
+}
+
+function drawMapBoard(ctx: CanvasRenderingContext2D, state: GameState) {
+  const x = MAP_BOARD_X - state.cameraX;
+  if (x < -120 || x > CANVAS_WIDTH + 120) return;
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(x - 6, GROUND_Y - 70, 12, 70);
+  ctx.fillRect(x - 60, GROUND_Y - 70, 12, 70);
+  ctx.fillRect(x + 48, GROUND_Y - 70, 12, 70);
+  ctx.fillStyle = "#fef3c7";
+  ctx.fillRect(x - 70, GROUND_Y - 160, 140, 96);
+  ctx.strokeStyle = "#78350f";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(x - 70, GROUND_Y - 160, 140, 96);
+  ctx.fillStyle = "#78350f";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText("WORLD MAP", x - 46, GROUND_Y - 136);
+  ctx.font = "12px sans-serif";
+  ctx.fillText(`${state.unlockedLevels}/10 unlocked`, x - 42, GROUND_Y - 112);
+  ctx.fillText("Press E", x - 24, GROUND_Y - 86);
+}
+
+function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
+  const x = PORTAL_X - state.cameraX;
+  if (x < -160 || x > CANVAS_WIDTH + 160) return;
+  const level = LEVELS[state.selectedLevel]!;
+  const themeColors: Record<Biome, string> = {
+    sunny: "#4ade80",
+    night: "#4338ca",
+    beach: "#f59e0b",
+    ocean: "#06b6d4",
+    sky: "#38bdf8",
+    jungle: "#16a34a",
+    snow: "#e0f2fe",
+    desert: "#fbbf24",
+    mountain: "#94a3b8",
+    village: "#a3a3a3",
+    dark: "#1e293b",
+    fire: "#f97316",
+    castle: "#7c3aed",
+  };
+  const color = themeColors[level.biome];
+  const t = Date.now() / 400;
+  const cy = GROUND_Y - 90;
+
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(x - 74, GROUND_Y - 180, 16, 180);
+  ctx.fillRect(x + 58, GROUND_Y - 180, 16, 180);
+  ctx.fillRect(x - 74, GROUND_Y - 196, 148, 18);
+
+  for (let i = 4; i >= 0; i--) {
+    ctx.globalAlpha = 0.25 + i * 0.12;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, cy, 54 - i * 6 + Math.sin(t + i) * 3, 84 - i * 10 + Math.cos(t + i) * 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  drawBossFace(ctx, level.boss, x, cy, 26);
+
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "bold 13px sans-serif";
+  const label = level.short;
+  ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
+}
+
+function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
+  ctx.fillStyle = "rgba(2,6,23,0.92)";
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillStyle = "#facc15";
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillText("World Map", 40, 52);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "13px sans-serif";
+  ctx.fillText("A/D or arrows to choose • E to set the portal • Esc to close", 40, 76);
+
+  LEVELS.forEach((level, i) => {
+    const col = i % 5;
+    const row = Math.floor(i / 5);
+    const cx = 120 + col * 145;
+    const cy = 190 + row * 190;
+    const unlocked = i < state.unlockedLevels;
+    const selected = i === state.mapCursor;
+
+    ctx.fillStyle = unlocked ? "#1e293b" : "#0f172a";
+    ctx.fillRect(cx - 62, cy - 74, 124, 148);
+    ctx.strokeStyle = selected ? "#facc15" : unlocked ? "#475569" : "#1e293b";
+    ctx.lineWidth = selected ? 4 : 2;
+    ctx.strokeRect(cx - 62, cy - 74, 124, 148);
+
+    if (unlocked) {
+      drawBossFace(ctx, level.boss, cx, cy - 12, 30);
+    } else {
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(cx - 18, cy - 18, 36, 30);
+      ctx.beginPath();
+      ctx.arc(cx, cy - 18, 14, Math.PI, 0);
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "#334155";
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = unlocked ? "#f8fafc" : "#475569";
+    ctx.font = "bold 13px sans-serif";
+    const t1 = `${i + 1}. ${level.short}`;
+    ctx.fillText(t1, cx - ctx.measureText(t1).width / 2, cy + 44);
+    ctx.font = "11px sans-serif";
+    ctx.fillStyle = unlocked ? "#94a3b8" : "#334155";
+    const t2 = unlocked ? BOSSES[level.boss].name : "Locked";
+    ctx.fillText(t2, cx - ctx.measureText(t2).width / 2, cy + 62);
+  });
+}
+
+function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
+  const phase = state.cutscenePhase;
+  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+  grad.addColorStop(0, phase === 0 ? "#7dd3fc" : "#450a0a");
+  grad.addColorStop(1, phase === 0 ? "#bbf7d0" : "#1e1b4b");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  ctx.fillStyle = "#57534e";
+  ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
+  for (let i = 0; i < 4; i++) drawHouse(ctx, 60 + i * 200);
+
+  const t = state.cutsceneTimer;
+
+  if (phase >= 1) {
+    // dragon and wizard arrive
+    const dx = phase === 1 ? 900 - Math.min(560, (t - 190) * 3) : 340;
+    ctx.save();
+    ctx.translate(dx, 150 + Math.sin(t * 0.06) * 10);
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(0, 0, 130, 80);
+    ctx.fillStyle = "#dc2626";
+    ctx.beginPath();
+    ctx.moveTo(130, 16);
+    ctx.lineTo(166, 6);
+    ctx.lineTo(130, 40);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#166534";
+    ctx.beginPath();
+    ctx.moveTo(20, 6);
+    ctx.lineTo(90, -40);
+    ctx.lineTo(58, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(108, 14, 12, 12);
+    ctx.restore();
+
+    // wizard on the ground
+    ctx.fillStyle = "#4c1d95";
+    ctx.beginPath();
+    ctx.moveTo(250, GROUND_Y - 90);
+    ctx.lineTo(290, GROUND_Y);
+    ctx.lineTo(210, GROUND_Y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#fcd7b6";
+    ctx.beginPath();
+    ctx.arc(250, GROUND_Y - 96, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4c1d95";
+    ctx.beginPath();
+    ctx.moveTo(228, GROUND_Y - 104);
+    ctx.lineTo(250, GROUND_Y - 160);
+    ctx.lineTo(272, GROUND_Y - 104);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  if (phase >= 2 && phase <= 3) {
+    // minions carrying the princess away
+    const px = 420 + (phase === 3 ? (t - 570) * 1.6 : 0);
+    const py = GROUND_Y - 120 - (phase === 3 ? (t - 570) * 0.5 : 0);
+    ctx.fillStyle = "#ec4899";
+    ctx.fillRect(px, py, 28, 40);
+    ctx.fillStyle = "#fcd34d";
+    ctx.fillRect(px + 4, py - 16, 20, 16);
+    ctx.fillStyle = "#be123c";
+    for (const off of [-40, 40]) {
+      ctx.beginPath();
+      ctx.ellipse(px + 14 + off, py - 30, 22, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (phase >= 4) {
+    // the mayor pleads with the knight
+    ctx.fillStyle = "#7c3aed";
+    ctx.fillRect(300, GROUND_Y - 46, 24, 46);
+    ctx.fillStyle = "#fcd7b6";
+    ctx.beginPath();
+    ctx.arc(312, GROUND_Y - 56, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillRect(420, GROUND_Y - 48, 32, 48);
+    ctx.fillStyle = "#cbd5e1";
+    ctx.fillRect(424, GROUND_Y - 46, 24, 12);
+  }
+
+  const line = INTRO_LINES[Math.min(phase, INTRO_LINES.length - 1)]!;
+  ctx.fillStyle = "rgba(2,6,23,0.85)";
+  ctx.fillRect(0, CANVAS_HEIGHT - 120, CANVAS_WIDTH, 120);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 18px sans-serif";
+  ctx.fillText(line, 40, CANVAS_HEIGHT - 70);
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Press any key (or tap) to skip", 40, CANVAS_HEIGHT - 34);
 }
 
 function drawDialog(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -1850,9 +2515,23 @@ function drawParticles(ctx: CanvasRenderingContext2D, state: GameState) {
 export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+  if (state.mode === "intro") {
+    drawIntro(ctx, state);
+    return;
+  }
+
+  if (state.mode === "minigame" && state.minigame) {
+    drawMinigame(ctx, state.minigame);
+    return;
+  }
+
   drawBackground(ctx, state);
   drawGroundStrip(ctx, state);
-  drawExitGate(ctx, state);
+
+  if (state.scene === "village") {
+    drawMapBoard(ctx, state);
+    drawPortal(ctx, state);
+  }
 
   for (const platform of state.platforms) {
     if (platform.y === GROUND_Y) continue;
@@ -1871,7 +2550,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   const talkTarget = state.npcs.length ? nearestNpc(state) : null;
   for (const npc of state.npcs) drawNpc(ctx, npc, state.cameraX, npc === talkTarget && state.mode === "playing");
 
-  if (state.dragon) drawDragon(ctx, state.dragon, state.cameraX);
+  if (state.boss) drawBoss(ctx, state.boss, state.cameraX);
 
   drawPlayer(ctx, state.player, state.cameraX);
 
@@ -1887,7 +2566,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillText(
     state.swim
       ? "A/D: swim • W/Space: rise • S: dive • R: sword/bow • F: attack • E: chests"
-      : "A/D: walk • Shift: sprint • Space: jump • R: sword/bow • F: attack • E: chests, TNT pail, key & cage",
+      : "A/D: walk • Shift: sprint • Space: jump • R: sword/bow • F: attack • E: interact, TNT pail",
     12,
     CANVAS_HEIGHT - 10
   );
@@ -1905,10 +2584,13 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(name, CANVAS_WIDTH / 2 - ctx.measureText(name).width / 2, 120);
   }
 
-  if (state.dragon && state.dragon.state === "resting") {
+  if (state.boss && state.boss.state === "resting") {
     ctx.fillStyle = "#facc15";
     ctx.font = "bold 16px sans-serif";
-    const t = state.player.tnt > 0 ? "DRAGON RESTING — Press E to throw TNT!" : "DRAGON RESTING — Get TNT from a pail!";
+    const t =
+      state.player.tnt > 0
+        ? `${state.boss.name.toUpperCase()} IS DOWN — Press E to throw TNT!`
+        : `${state.boss.name.toUpperCase()} IS DOWN — Get TNT from a pail!`;
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 80);
   }
 
@@ -1924,14 +2606,16 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = "#4ade80";
     ctx.font = "bold 32px sans-serif";
-    const t = "Level Complete!";
-    ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, CANVAS_HEIGHT / 2 - 10);
+    const t = "Boss Defeated!";
+    ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, CANVAS_HEIGHT / 2 - 20);
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px sans-serif";
-    const next = LEVELS[state.levelIndex + 1]?.name ?? "";
-    ctx.fillText(next, CANVAS_WIDTH / 2 - ctx.measureText(next).width / 2, CANVAS_HEIGHT / 2 + 26);
+    const next = LEVELS[state.levelIndex + 1];
+    const t2 = next ? `${next.short} unlocked — back to the village` : "Back to the village";
+    ctx.fillText(t2, CANVAS_WIDTH / 2 - ctx.measureText(t2).width / 2, CANVAS_HEIGHT / 2 + 20);
   }
 
+  if (state.mode === "map") drawMapScreen(ctx, state);
   if (state.mode === "dialog") drawDialog(ctx, state);
   if (state.mode === "shop") drawShop(ctx, state);
 }
