@@ -83,7 +83,7 @@ export const BOSSES: Record<BossKind, BossDef> = {
     height: 62,
     attackEvery: 55,
     activeFrames: 340,
-    restFrames: 200,
+    restFrames: 140,
     speed: 4,
     color: "#475569",
     accent: "#e2e8f0",
