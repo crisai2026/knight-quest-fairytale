@@ -12,6 +12,8 @@ import type {
   Biome,
   BossKind,
   Npc,
+  FoodKind,
+  FoodDrop,
 } from "./types";
 import {
   LEVELS,
@@ -213,6 +215,8 @@ function baseState(carry: Player, progress: Progress): GameState {
     biomeLabelTimer: 0,
     owlTimer: 0,
     coins: [],
+    foods: [],
+    pendingLevel: 0,
     npcs: [],
     dialogLines: [],
     dialogIndex: 0,
@@ -556,7 +560,9 @@ function updateVillage(state: GameState) {
   if (Math.abs(cx - PORTAL_X) < 80) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
-      startLevel(state, state.selectedLevel);
+      state.pendingLevel = state.selectedLevel;
+      state.mode = "levelstart";
+      sfx.buy();
       return;
     }
     showMessage(state, `Press E to enter the ${LEVELS[state.selectedLevel]!.short} portal`, 20);
@@ -614,6 +620,124 @@ function updateCoins(state: GameState) {
       state.coins.splice(i, 1);
     }
   }
+}
+
+const FOOD_INFO: Record<FoodKind, { label: string; hunger: number }> = {
+  berries: { label: "some berries", hunger: 1 },
+  apple: { label: "an apple", hunger: 1.5 },
+  cheese: { label: "a wedge of cheese", hunger: 2 },
+  bread: { label: "a loaf of bread", hunger: 2.5 },
+  chicken: { label: "a roast chicken leg", hunger: 3.5 },
+};
+
+const FOOD_KINDS: FoodKind[] = ["berries", "apple", "cheese", "bread", "chicken"];
+
+function spawnFoods(state: GameState, x: number, y: number, count: number) {
+  for (let i = 0; i < count; i++) {
+    state.foods.push({
+      kind: FOOD_KINDS[Math.floor(Math.random() * FOOD_KINDS.length)]!,
+      x: x + (Math.random() - 0.5) * 40,
+      y: y - Math.random() * 20,
+      vy: -4 - Math.random() * 2,
+      bob: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+function updateFoods(state: GameState) {
+  const p = state.player;
+  for (let i = state.foods.length - 1; i >= 0; i--) {
+    const f = state.foods[i]!;
+    f.vy += GRAVITY * 0.4;
+    f.y = Math.min(GROUND_Y - 12, f.y + f.vy);
+    if (f.y >= GROUND_Y - 12) f.vy = 0;
+    f.bob += 0.12;
+    const dx = p.x + p.width / 2 - f.x;
+    const dy = p.y + p.height / 2 - f.y;
+    if (Math.hypot(dx, dy) < 46) {
+      const info = FOOD_INFO[f.kind];
+      p.hunger = Math.min(p.maxHunger, p.hunger + info.hunger);
+      sfx.eat();
+      spawnParticle(state, f.x, f.y, "#fca5a5", 5, 2);
+      showMessage(state, `Ate ${info.label}! +${info.hunger} hunger`);
+      state.foods.splice(i, 1);
+    }
+  }
+}
+
+function drawFood(ctx: CanvasRenderingContext2D, f: FoodDrop, cameraX: number) {
+  const x = f.x - cameraX;
+  if (x < -30 || x > CANVAS_WIDTH + 30) return;
+  const y = f.y + Math.sin(f.bob) * 2;
+  ctx.save();
+  ctx.translate(x, y);
+  if (f.kind === "bread") {
+    ctx.fillStyle = "#c2833a";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 12, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#7c4a12";
+    ctx.lineWidth = 2;
+    for (const off of [-5, 0, 5]) {
+      ctx.beginPath();
+      ctx.moveTo(off - 2, -5);
+      ctx.lineTo(off + 2, -1);
+      ctx.stroke();
+    }
+  } else if (f.kind === "apple") {
+    ctx.fillStyle = "#dc2626";
+    ctx.beginPath();
+    ctx.arc(0, 1, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#7c2d12";
+    ctx.fillRect(-1, -12, 2, 6);
+    ctx.fillStyle = "#16a34a";
+    ctx.beginPath();
+    ctx.ellipse(6, -9, 6, 3, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (f.kind === "cheese") {
+    ctx.fillStyle = "#fbbf24";
+    ctx.beginPath();
+    ctx.moveTo(-11, 7);
+    ctx.lineTo(11, 7);
+    ctx.lineTo(-11, -7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f59e0b";
+    ctx.beginPath();
+    ctx.arc(-4, 2, 2.4, 0, Math.PI * 2);
+    ctx.arc(2, 5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (f.kind === "chicken") {
+    ctx.fillStyle = "#a16207";
+    ctx.beginPath();
+    ctx.ellipse(2, 0, 10, 7, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#f5f5f4";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(-5, 3);
+    ctx.lineTo(-12, 8);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = "#7e22ce";
+    for (const [bx, by] of [[-5, 2], [4, 3], [0, -4]] as const) {
+      ctx.beginPath();
+      ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "#16a34a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.lineTo(6, -12);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFoods(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const f of state.foods) drawFood(ctx, f, state.cameraX);
 }
 
 const HIT_SOUND: Record<Enemy["kind"], () => void> = {
@@ -737,6 +861,9 @@ function updateChests(state: GameState) {
       used = true;
       sfx.chest();
       spawnCoins(state, chest.x + chest.width / 2, chest.y, 3 + Math.floor(Math.random() * 4));
+      if (chest.item !== "food" && Math.random() < 0.6) {
+        spawnFoods(state, chest.x + chest.width / 2, chest.y, 1);
+      }
       spawnParticle(state, chest.x + chest.width / 2, chest.y + chest.height / 2, "#eab308", 8, 3);
       if (chest.item === "bandage") {
         p.health = Math.min(p.maxHealth, p.health + 2.5);
@@ -745,8 +872,8 @@ function updateChests(state: GameState) {
         p.health = p.maxHealth;
         showMessage(state, "First aid kit! Full health");
       } else if (chest.item === "food") {
-        p.hunger = p.maxHunger;
-        showMessage(state, "Food! Hunger restored");
+        spawnFoods(state, chest.x + chest.width / 2, chest.y, 2 + Math.floor(Math.random() * 2));
+        showMessage(state, "Food spills out! Grab it to eat");
       } else {
         p.arrowsLeft += 12;
         showMessage(state, "+12 arrows");
@@ -1130,7 +1257,7 @@ export function updateGame(state: GameState) {
     return;
   }
 
-  if (state.mode === "map") return;
+  if (state.mode === "map" || state.mode === "levelstart") return;
 
   if (state.mode === "minigame") {
     const m = state.minigame;
@@ -1169,6 +1296,7 @@ export function updateGame(state: GameState) {
   updateArrows(state);
   updateChests(state);
   updateCoins(state);
+  updateFoods(state);
   updateBoss(state);
   updateTNT(state);
   updateKeyAndCage(state);
@@ -1204,6 +1332,15 @@ export function handleKeyDown(state: GameState, key: string) {
   }
   if (state.mode === "won" && (key === "enter" || key === " ")) {
     restartGame(state);
+    return;
+  }
+  if (state.mode === "levelstart") {
+    if (key === "escape") {
+      state.mode = "playing";
+      state.keys["e"] = false;
+    } else {
+      confirmLevelStart(state);
+    }
     return;
   }
   if (state.mode === "map") {
@@ -1267,6 +1404,15 @@ export function handleKeyDown(state: GameState, key: string) {
   }
   state.keys[key] = true;
   if (!state.started && key !== "") state.started = true;
+}
+
+/** Begin the level waiting on the "click to start" card. */
+export function confirmLevelStart(state: GameState) {
+  if (state.mode !== "levelstart") return false;
+  const level = state.pendingLevel;
+  state.mode = "playing";
+  startLevel(state, level);
+  return true;
 }
 
 export function handleKeyUp(state: GameState, key: string) {
@@ -2293,6 +2439,58 @@ function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
 }
 
+/** Throwaway enemy record so the intro can reuse the real monster art. */
+function introMinion(kind: Enemy["kind"], x: number, y: number, wobble = 0): Enemy {
+  return {
+    kind,
+    x,
+    y,
+    baseY: y,
+    width: kind === "winged" ? 42 : 44,
+    height: kind === "winged" ? 30 : 40,
+    vx: 1,
+    vy: 0,
+    health: 1,
+    patrolStart: x,
+    patrolEnd: x,
+    flash: 0,
+    wobble,
+  };
+}
+
+function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
+  const level = LEVELS[state.pendingLevel]!;
+  ctx.fillStyle = "rgba(2,6,23,0.88)";
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fbbf24";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText(`LEVEL ${state.pendingLevel + 1}`, CANVAS_WIDTH / 2, 130);
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 40px sans-serif";
+  ctx.fillText(level.name, CANVAS_WIDTH / 2, 180);
+
+  drawBossFace(ctx, level.boss, CANVAS_WIDTH / 2, 300, 70);
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText(`Boss: ${BOSSES[level.boss].name}`, CANVAS_WIDTH / 2, 410);
+
+  const pulse = 0.6 + Math.abs(Math.sin(Date.now() / 400)) * 0.4;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = "#22c55e";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText("CLICK OR TAP TO START", CANVAS_WIDTH / 2, 480);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "15px sans-serif";
+  ctx.fillText("(or press any key • Esc to stay in the village)", CANVAS_WIDTH / 2, 516);
+  ctx.textAlign = "left";
+}
+
 function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "rgba(2,6,23,0.92)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -2408,12 +2606,10 @@ function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillRect(px, py, 28, 40);
     ctx.fillStyle = "#fcd34d";
     ctx.fillRect(px + 4, py - 16, 20, 16);
-    ctx.fillStyle = "#be123c";
-    for (const off of [-40, 40]) {
-      ctx.beginPath();
-      ctx.ellipse(px + 14 + off, py - 30, 22, 12, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // the actual level monsters carry her off: furry, tentacle and a winged one
+    drawEnemy(ctx, introMinion("furry", px - 58, py + 6), 0);
+    drawEnemy(ctx, introMinion("tentacle", px + 34, py + 6), 0);
+    drawEnemy(ctx, introMinion("winged", px - 6, py - 62, t * 0.1), 0);
   }
 
   if (phase >= 4) {
@@ -2546,6 +2742,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   drawCage(ctx, state);
   drawKeyDrop(ctx, state);
   drawCoins(ctx, state);
+  drawFoods(ctx, state);
 
   const talkTarget = state.npcs.length ? nearestNpc(state) : null;
   for (const npc of state.npcs) drawNpc(ctx, npc, state.cameraX, npc === talkTarget && state.mode === "playing");
@@ -2615,6 +2812,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(t2, CANVAS_WIDTH / 2 - ctx.measureText(t2).width / 2, CANVAS_HEIGHT / 2 + 20);
   }
 
+  if (state.mode === "levelstart") drawLevelStart(ctx, state);
   if (state.mode === "map") drawMapScreen(ctx, state);
   if (state.mode === "dialog") drawDialog(ctx, state);
   if (state.mode === "shop") drawShop(ctx, state);
