@@ -132,6 +132,13 @@ export const sfx = {
     tone({ type: "square", from: 990, duration: 0.07, volume: 0.16 });
     tone({ type: "square", from: 1480, duration: 0.12, volume: 0.16, delay: 0.07 });
   },
+  /** Triumphant chime when the victory flag is taken. */
+  flagRaise() {
+    tone({ type: "triangle", from: 523, duration: 0.14, volume: 0.18 });
+    tone({ type: "triangle", from: 659, duration: 0.14, volume: 0.18, delay: 0.12 });
+    tone({ type: "triangle", from: 784, duration: 0.16, volume: 0.18, delay: 0.24 });
+    tone({ type: "triangle", from: 1047, duration: 0.35, volume: 0.2, delay: 0.36 });
+  },
   hurt() {
     tone({ type: "square", from: 320, to: 120, duration: 0.2, volume: 0.2 });
   },

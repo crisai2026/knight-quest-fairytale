@@ -92,6 +92,7 @@ export type GameState = {
   bossDefeated: boolean;
   tntList: TNT[];
   keyDrop: KeyDrop | null;
+  flagDrop: FlagDrop | null;
   cage: Cage | null;
   message: string;
   messageTimer: number;
@@ -247,6 +248,17 @@ export type KeyDrop = {
   y: number;
   vy: number;
   collected: boolean;
+};
+
+/** Victory flag dropped by a defeated boss; grabbing it ends the level. */
+export type FlagDrop = {
+  x: number;
+  y: number;
+  vy: number;
+  planted: boolean;
+  collected: boolean;
+  color: string;
+  wave: number;
 };
 
 export type Cage = {
