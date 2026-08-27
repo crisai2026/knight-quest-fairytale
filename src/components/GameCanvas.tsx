@@ -354,10 +354,10 @@ export function GameCanvas() {
       </div>
 
       <p className="mt-4 hidden max-w-2xl text-center text-sm text-slate-400 sm:block">
-        Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
-        Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
-        you find it in the village, F to attack, E for chests, villagers, the shop, TNT pails, the dragon's key and the
-        princess's cage.
+        Ten levels, ten bosses — forest, night, beach, ocean, sky, jungle, snow, desert, snow mountain and the dragon's
+        castle. The village is your hub: read the world map board, help villagers in mini-games, buy from the shop, then
+        step into the portal. A/D or Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to
+        switch sword and bow, F to attack, E for chests, TNT pails, villagers and the princess's cage.
       </p>
     </div>
   );
