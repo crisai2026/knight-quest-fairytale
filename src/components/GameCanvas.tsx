@@ -66,17 +66,18 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
 
 
 
-  if (state.dragon) {
-    const dx = CANVAS_WIDTH - pad - 160;
+  const boss = state.boss;
+  if (boss) {
+    const dx = CANVAS_WIDTH - pad - 200;
     const dy = pad;
     ctx.fillStyle = "#374151";
-    ctx.fillRect(dx, dy, 150, 16);
+    ctx.fillRect(dx, dy, 190, 16);
     ctx.fillStyle = "#dc2626";
-    ctx.fillRect(dx, dy, 150 * (state.dragon.health / state.dragon.maxHealth), 16);
+    ctx.fillRect(dx, dy, 190 * Math.max(0, boss.health / boss.maxHealth), 16);
     ctx.strokeStyle = "#9ca3af";
-    ctx.strokeRect(dx, dy, 150, 16);
+    ctx.strokeRect(dx, dy, 190, 16);
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(`Dragon ${state.dragon.health}/${state.dragon.maxHealth}`, dx, dy + 30);
+    ctx.fillText(`${boss.name} ${Math.max(0, boss.health)}/${boss.maxHealth}`, dx, dy + 30);
   }
 
 
