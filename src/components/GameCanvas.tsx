@@ -12,6 +12,7 @@ import { isMusicEnabled, setMusicEnabled, unlockAudio } from "@/lib/game/audio";
 import type { GameState } from "@/lib/game/types";
 
 function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (state.mode === "intro" || state.mode === "minigame" || state.mode === "map") return;
   const p = state.player;
   const pad = 16;
   const heartSize = 18;
