@@ -100,8 +100,6 @@ export function updateMinigame(m: MinigameState, keys: Record<string, boolean>):
         o.alive = false;
         m.score++;
         sfx.chest();
-        // the fed animal wanders off and a new hungry one appears
-        setTimeout(() => {}, 0);
         o.x = 80 + Math.random() * (MINIGAME_WIDTH - 160);
         o.alive = true;
       }
