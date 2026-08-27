@@ -983,19 +983,13 @@ function bossAttack(state: GameState, b: Boss) {
       push({ vx: (dx / dist) * 6, vy: (dy / dist) * 6, radius: 8, life: 150 });
       break;
     case "shark": {
-      // three-shot spread of water bolts
-      for (const spread of [-0.28, 0, 0.28]) {
-        const ca = Math.cos(spread);
-        const sa = Math.sin(spread);
-        const nx = dx / dist;
-        const ny = dy / dist;
-        push({
-          vx: (nx * ca - ny * sa) * 4,
-          vy: (nx * sa + ny * ca) * 4,
-          radius: 9,
-          life: 170,
-        });
-      }
+      // single aimed water bolt
+      push({
+        vx: (dx / dist) * 3,
+        vy: (dy / dist) * 3,
+        radius: 9,
+        life: 170,
+      });
       break;
     }
     case "scorpion":
