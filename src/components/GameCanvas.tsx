@@ -12,6 +12,7 @@ import { isMusicEnabled, setMusicEnabled, unlockAudio } from "@/lib/game/audio";
 import type { GameState } from "@/lib/game/types";
 
 function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (state.mode === "intro" || state.mode === "minigame" || state.mode === "map") return;
   const p = state.player;
   const pad = 16;
   const heartSize = 18;
@@ -66,17 +67,18 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
 
 
 
-  if (state.dragon) {
-    const dx = CANVAS_WIDTH - pad - 160;
+  const boss = state.boss;
+  if (boss) {
+    const dx = CANVAS_WIDTH - pad - 200;
     const dy = pad;
     ctx.fillStyle = "#374151";
-    ctx.fillRect(dx, dy, 150, 16);
+    ctx.fillRect(dx, dy, 190, 16);
     ctx.fillStyle = "#dc2626";
-    ctx.fillRect(dx, dy, 150 * (state.dragon.health / state.dragon.maxHealth), 16);
+    ctx.fillRect(dx, dy, 190 * Math.max(0, boss.health / boss.maxHealth), 16);
     ctx.strokeStyle = "#9ca3af";
-    ctx.strokeRect(dx, dy, 150, 16);
+    ctx.strokeRect(dx, dy, 190, 16);
     ctx.fillStyle = "#ffffff";
-    ctx.fillText(`Dragon ${state.dragon.health}/${state.dragon.maxHealth}`, dx, dy + 30);
+    ctx.fillText(`${boss.name} ${Math.max(0, boss.health)}/${boss.maxHealth}`, dx, dy + 30);
   }
 
 
@@ -173,6 +175,8 @@ export function GameCanvas() {
 
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+
+    (window as unknown as { __gs?: GameState }).__gs = stateRef.current;
 
     const loop = () => {
       updateGame(stateRef.current);
@@ -352,10 +356,10 @@ export function GameCanvas() {
       </div>
 
       <p className="mt-4 hidden max-w-2xl text-center text-sm text-slate-400 sm:block">
-        Seven levels: sunny forest, night forest, beach, deep ocean, village, desert, and the dragon's castle. A/D or
-        Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to switch sword and bow once
-        you find it in the village, F to attack, E for chests, villagers, the shop, TNT pails, the dragon's key and the
-        princess's cage.
+        Ten levels, ten bosses — forest, night, beach, ocean, sky, jungle, snow, desert, snow mountain and the dragon's
+        castle. The village is your hub: read the world map board, help villagers in mini-games, buy from the shop, then
+        step into the portal. A/D or Arrows to move, Shift to sprint, Space to jump (W/Space to swim up, S to dive), R to
+        switch sword and bow, F to attack, E for chests, TNT pails, villagers and the princess's cage.
       </p>
     </div>
   );
