@@ -176,6 +176,10 @@ export function GameCanvas() {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
+    if (import.meta.env.DEV) {
+      (window as unknown as { __gs?: GameState }).__gs = stateRef.current;
+    }
+
     const loop = () => {
       updateGame(stateRef.current);
       renderGame(ctx, stateRef.current);
