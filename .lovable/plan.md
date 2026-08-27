@@ -6,7 +6,7 @@ For the Ocean test chapter (Level 4), make the Giant Shark's attack easier to do
 
 1. **Single bolt attack** in `src/lib/game/engine.ts`:
    - Replace the shark's `for (const spread of [-0.28, 0, 0.28])` loop with a single projectile aimed directly at the knight.
-   - Keep the lowered velocity (4) and radius (9) from the previous tuning.
+   - Keep the lowered velocity (3) and radius (9) from the previous tuning.
 
 2. **Balance check**:
    - Make sure the shorter rest window still provides enough pressure when combined with the easier-to-dodge single bolt.
