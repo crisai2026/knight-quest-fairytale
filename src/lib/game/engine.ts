@@ -2897,12 +2897,19 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 104);
   }
 
+  if (state.flagDrop && !state.flagDrop.collected) {
+    ctx.fillStyle = "#4ade80";
+    ctx.font = "bold 16px sans-serif";
+    const t = "Grab the victory flag to finish the level!";
+    ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 80);
+  }
+
   if (state.mode === "levelcomplete") {
     ctx.fillStyle = "rgba(0,0,0,0.7)";
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = "#4ade80";
     ctx.font = "bold 32px sans-serif";
-    const t = "Boss Defeated!";
+    const t = "Level Complete — flag taken!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, CANVAS_HEIGHT / 2 - 20);
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px sans-serif";
