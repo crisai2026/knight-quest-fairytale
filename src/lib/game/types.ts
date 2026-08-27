@@ -1,5 +1,6 @@
 export type GameMode =
   | "intro"
+  | "levelstart"
   | "playing"
   | "map"
   | "minigame"
@@ -102,6 +103,9 @@ export type GameState = {
   biomeLabelTimer: number;
   owlTimer: number;
   coins: CoinDrop[];
+  foods: FoodDrop[];
+  /** Level waiting on the "click to start" card. */
+  pendingLevel: number;
   npcs: Npc[];
   dialogLines: string[];
   dialogIndex: number;
@@ -114,6 +118,16 @@ export type GameState = {
   mapCursor: number;
   minigame: MinigameState | null;
   bestScores: Record<string, number>;
+};
+
+export type FoodKind = "bread" | "apple" | "cheese" | "chicken" | "berries";
+
+export type FoodDrop = {
+  kind: FoodKind;
+  x: number;
+  y: number;
+  vy: number;
+  bob: number;
 };
 
 export type CoinDrop = {

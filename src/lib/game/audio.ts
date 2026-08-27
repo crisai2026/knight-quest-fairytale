@@ -139,6 +139,11 @@ export const sfx = {
     tone({ type: "triangle", from: 520, duration: 0.1, volume: 0.16 });
     tone({ type: "triangle", from: 780, duration: 0.16, volume: 0.16, delay: 0.09 });
   },
+  /** Crunchy bite when the knight eats food. */
+  eat() {
+    noise(0.12, "bandpass", 1200, 0.18, 0, 600);
+    tone({ type: "triangle", from: 300, to: 480, duration: 0.12, volume: 0.14, delay: 0.06 });
+  },
   talk() {
     tone({ type: "square", from: 420, to: 520, duration: 0.07, volume: 0.1 });
   },
