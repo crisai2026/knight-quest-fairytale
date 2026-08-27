@@ -10,6 +10,17 @@ export type EnemySpawn = {
   y?: number;
 };
 
+/** One scene of a chapter. The last scene holds the boss. */
+export type SceneDef = {
+  name: string;
+  width: number;
+  platforms: Platform[];
+  enemies: EnemySpawn[];
+  chests: Chest[];
+  /** Only the final scene of a chapter has the boss. */
+  boss?: boolean;
+};
+
 export type LevelDef = {
   name: string;
   short: string;
@@ -20,6 +31,8 @@ export type LevelDef = {
   platforms: Platform[];
   enemies: EnemySpawn[];
   chests: Chest[];
+  /** When present, the level is a chapter split into these scenes. */
+  scenes?: SceneDef[];
 };
 
 function plat(x: number, y: number, width = 150): Platform {
@@ -106,6 +119,47 @@ export const LEVELS: LevelDef[] = [
       { kind: "fish", x: 1900, patrolStart: 1760, patrolEnd: 2200, y: 260 },
     ],
     chests: [chest(420, "food"), chest(1220, "bandage"), chest(2060, "firstaid")],
+    scenes: [
+      {
+        name: "Scene 1 — Shallow Reef",
+        width: 2400,
+        platforms: [plat(340, 440, 180), plat(760, 330, 140), plat(1180, 440, 170), plat(1600, 340, 150)],
+        enemies: [
+          { kind: "fish", x: 520, patrolStart: 400, patrolEnd: 900, y: 320 },
+          { kind: "fish", x: 1000, patrolStart: 860, patrolEnd: 1360, y: 250 },
+          { kind: "fish", x: 1700, patrolStart: 1560, patrolEnd: 2000, y: 350 },
+        ],
+        chests: [chest(420, "food"), chest(1240, "bandage")],
+      },
+      {
+        name: "Scene 2 — Deep Trench",
+        width: 2800,
+        platforms: [
+          plat(300, 420, 140),
+          plat(640, 320, 120),
+          plat(1000, 430, 140),
+          plat(1360, 300, 120),
+          plat(1720, 420, 140),
+          plat(2100, 330, 130),
+        ],
+        enemies: [
+          { kind: "fish", x: 460, patrolStart: 360, patrolEnd: 820, y: 300 },
+          { kind: "fish", x: 900, patrolStart: 780, patrolEnd: 1240, y: 220 },
+          { kind: "fish", x: 1420, patrolStart: 1300, patrolEnd: 1780, y: 370 },
+          { kind: "fish", x: 1900, patrolStart: 1780, patrolEnd: 2260, y: 260 },
+          { kind: "tentacle", x: 2320, patrolStart: 2220, patrolEnd: 2560 },
+        ],
+        chests: [chest(360, "bandage"), chest(1300, "food"), chest(2160, "firstaid")],
+      },
+      {
+        name: "Scene 3 — The Shark's Lair",
+        width: 2200,
+        platforms: [plat(320, 420, 170), plat(700, 330, 150)],
+        enemies: [{ kind: "fish", x: 620, patrolStart: 480, patrolEnd: 900, y: 300 }],
+        chests: [chest(300, "firstaid"), chest(820, "food")],
+        boss: true,
+      },
+    ],
   },
   {
     name: "Level 5 — The High Sky",

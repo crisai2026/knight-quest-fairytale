@@ -171,8 +171,12 @@ export function bossArenaX(level: LevelDef) {
   return level.width - 700;
 }
 
-function levelPails(level: LevelDef): Pail[] {
-  const ax = bossArenaX(level);
+function arenaXForWidth(width: number) {
+  return width - 700;
+}
+
+function levelPails(arenaX: number): Pail[] {
+  const ax = arenaX;
   return [
     { x: ax - 180, y: GROUND_Y - 34, width: 34, height: 34 },
     { x: ax + 160, y: GROUND_Y - 34, width: 34, height: 34 },
@@ -187,6 +191,10 @@ function baseState(carry: Player, progress: Progress): GameState {
     cameraX: 0,
     levelIndex: 0,
     levelName: "",
+    sceneIndex: 0,
+    sceneCount: 1,
+    hasBoss: true,
+    bossArenaX: 0,
     worldWidth: 1000,
     exitX: Number.POSITIVE_INFINITY,
     swim: false,
@@ -246,29 +254,58 @@ function refreshPlayer(player: Player) {
   player.hasKey = false;
 }
 
-export function loadLevel(levelIndex: number, carry: Player, progress: Progress): GameState {
+export function loadLevel(
+  levelIndex: number,
+  carry: Player,
+  progress: Progress,
+  sceneIndex = 0
+): GameState {
   const level = LEVELS[levelIndex]!;
+  const scenes = level.scenes;
+  const scene = scenes?.[Math.min(sceneIndex, scenes.length - 1)];
+  const width = scene ? scene.width : level.width;
+  const hasBoss = scene ? scene.boss === true : true;
+
   const player = { ...carry, items: [...carry.items] };
   refreshPlayer(player);
 
   const state = baseState(player, progress);
   state.scene = "level";
   state.levelIndex = levelIndex;
-  state.levelName = level.name;
-  state.worldWidth = level.width;
+  state.sceneIndex = scene ? sceneIndex : 0;
+  state.sceneCount = scenes ? scenes.length : 1;
+  state.hasBoss = hasBoss;
+  state.levelName = scene ? `${level.short}: ${scene.name}` : level.name;
+  state.worldWidth = width;
+  state.bossArenaX = arenaXForWidth(width);
   state.swim = level.swim === true;
   state.biome = level.biome;
-  state.enemies = level.enemies.map(makeEnemy);
-  state.chests = level.chests.map((c: Chest) => ({ ...c }));
+  state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
+  state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
-    { x: 0, y: GROUND_Y, width: level.width, height: 80 },
-    ...level.platforms.map((p: Platform) => ({ ...p })),
+    { x: 0, y: GROUND_Y, width, height: 80 },
+    ...(scene ? scene.platforms : level.platforms).map((p: Platform) => ({ ...p })),
   ];
-  state.pails = levelPails(level);
+  state.pails = hasBoss ? levelPails(state.bossArenaX) : [];
   state.cage =
-    levelIndex === FINAL_LEVEL_INDEX
-      ? { x: level.width - 200, y: GROUND_Y - 96, width: 80, height: 96, open: false }
+    hasBoss && levelIndex === FINAL_LEVEL_INDEX
+      ? { x: width - 200, y: GROUND_Y - 96, width: 80, height: 96, open: false }
       : null;
+
+  if (!hasBoss) {
+    // Scene-exit flag waiting at the end of the stretch.
+    state.flagDrop = {
+      x: width - 160,
+      y: GROUND_Y,
+      vy: 0,
+      planted: true,
+      collected: false,
+      color: FLAG_COLORS[state.biome] ?? "#facc15",
+      wave: 0,
+      big: false,
+      isSceneExit: true,
+    };
+  }
   return state;
 }
 
@@ -335,8 +372,19 @@ export function restartLevel(state: GameState) {
   fresh.health = fresh.maxHealth;
   fresh.hunger = fresh.maxHunger;
   const progress = progressFrom(state);
+  const sceneIndex = state.sceneIndex;
   if (state.scene === "village") replaceState(state, loadVillage(fresh, progress));
-  else replaceState(state, loadLevel(state.levelIndex, fresh, progress));
+  else replaceState(state, loadLevel(state.levelIndex, fresh, progress, sceneIndex));
+}
+
+/** Move on to the next scene of the current chapter, keeping the knight's stats. */
+function advanceScene(state: GameState) {
+  const next = state.sceneIndex + 1;
+  const carry = { ...state.player };
+  const progress = progressFrom(state);
+  const levelIndex = state.levelIndex;
+  saveProgress(state);
+  replaceState(state, loadLevel(levelIndex, carry, progress, next));
 }
 
 export function restartGame(state: GameState) {
@@ -511,8 +559,8 @@ function updatePlayer(state: GameState) {
 
   // Boss trigger near the end of the level
   const level = LEVELS[state.levelIndex]!;
-  const arenaX = bossArenaX(level);
-  if (!state.bossDefeated && state.boss === null && p.x >= arenaX - 240) {
+  const arenaX = state.bossArenaX;
+  if (state.hasBoss && !state.bossDefeated && state.boss === null && p.x >= arenaX - 240) {
     const def = BOSSES[level.boss];
     if (!state.bossIntroDone) {
       state.bossIntroDone = true;
@@ -934,9 +982,22 @@ function bossAttack(state: GameState, b: Boss) {
     case "owl":
       push({ vx: (dx / dist) * 6, vy: (dy / dist) * 6, radius: 8, life: 150 });
       break;
-    case "shark":
-      push({ vx: (dx / dist) * 5.5, vy: (dy / dist) * 5.5, radius: 9, life: 160 });
+    case "shark": {
+      // three-shot spread of water bolts
+      for (const spread of [-0.28, 0, 0.28]) {
+        const ca = Math.cos(spread);
+        const sa = Math.sin(spread);
+        const nx = dx / dist;
+        const ny = dy / dist;
+        push({
+          vx: (nx * ca - ny * sa) * 6,
+          vy: (nx * sa + ny * ca) * 6,
+          radius: 9,
+          life: 170,
+        });
+      }
       break;
+    }
     case "scorpion":
       push({ vx: dx > 0 ? 7 : -7, vy: -2, radius: 8, life: 140 });
       break;
@@ -958,8 +1019,7 @@ function updateBoss(state: GameState) {
   if (!b) return;
   const def = BOSSES[b.kind];
   const p = state.player;
-  const level = LEVELS[state.levelIndex]!;
-  const arenaX = bossArenaX(level);
+  const arenaX = state.bossArenaX;
 
   b.timer++;
   if (b.flash > 0) b.flash--;
@@ -1084,8 +1144,10 @@ function defeatBoss(state: GameState, b: Boss) {
     collected: false,
     color: FLAG_COLORS[state.biome] ?? "#facc15",
     wave: 0,
+    big: true,
+    isSceneExit: false,
   };
-  showMessage(state, `${b.name} defeated! Grab the victory flag!`, 200);
+  showMessage(state, `${b.name} defeated! Grab the big victory flag!`, 200);
 }
 
 const FLAG_COLORS: Partial<Record<Biome, string>> = {
@@ -1123,13 +1185,20 @@ function updateFlagDrop(state: GameState) {
     }
   }
 
-  const near =
-    Math.abs(p.x + p.width / 2 - f.x) < 46 && p.y + p.height > f.y - FLAG_POLE_HEIGHT - 20 && p.y < f.y + 10;
+  const poleH = f.big ? FLAG_POLE_HEIGHT * 1.5 : FLAG_POLE_HEIGHT;
+  // Scene-exit flags only need you to reach them horizontally (you may be swimming high up).
+  const near = f.isSceneExit
+    ? Math.abs(p.x + p.width / 2 - f.x) < 60
+    : Math.abs(p.x + p.width / 2 - f.x) < 52 && p.y + p.height > f.y - poleH - 26 && p.y < f.y + 10;
   if (f.planted && near) {
     f.collected = true;
     sfx.flagRaise();
     spawnParticle(state, f.x, f.y - FLAG_POLE_HEIGHT, f.color, 26, 5);
     spawnParticle(state, f.x, f.y - 30, "#ffffff", 16, 4);
+    if (f.isSceneExit) {
+      advanceScene(state);
+      return;
+    }
     state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
     state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
     saveProgress(state);
@@ -1143,33 +1212,36 @@ function drawFlagDrop(ctx: CanvasRenderingContext2D, state: GameState) {
   if (!f || f.collected) return;
   const x = f.x - state.cameraX;
   if (x < -80 || x > CANVAS_WIDTH + 80) return;
-  const topY = f.y - FLAG_POLE_HEIGHT;
+  const scale = f.big ? 1.5 : 1;
+  const poleH = FLAG_POLE_HEIGHT * scale;
+  const topY = f.y - poleH;
+  const cloth = 52 * scale;
 
   ctx.save();
-  ctx.globalAlpha = 0.25 + Math.sin(f.wave) * 0.1;
-  ctx.fillStyle = f.color;
+  ctx.globalAlpha = (f.big ? 0.34 : 0.25) + Math.sin(f.wave) * 0.1;
+  ctx.fillStyle = f.big ? "#facc15" : f.color;
   ctx.beginPath();
-  ctx.arc(x, topY + 20, 46, 0, Math.PI * 2);
+  ctx.arc(x, topY + 20 * scale, 46 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
   ctx.fillStyle = "#a8a29e";
-  ctx.fillRect(x - 3, topY, 6, FLAG_POLE_HEIGHT);
+  ctx.fillRect(x - 3 * scale, topY, 6 * scale, poleH);
   ctx.fillStyle = "#facc15";
   ctx.beginPath();
-  ctx.arc(x, topY - 3, 5, 0, Math.PI * 2);
+  ctx.arc(x, topY - 3 * scale, 5 * scale, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = f.color;
+  ctx.fillStyle = f.big ? "#fbbf24" : f.color;
   ctx.beginPath();
   ctx.moveTo(x + 3, topY + 4);
   for (let i = 0; i <= 8; i++) {
     const t = i / 8;
-    ctx.lineTo(x + 3 + t * 52, topY + 4 + Math.sin(f.wave + t * 3) * 4);
+    ctx.lineTo(x + 3 + t * cloth, topY + 4 + Math.sin(f.wave + t * 3) * 4 * scale);
   }
   for (let i = 8; i >= 0; i--) {
     const t = i / 8;
-    ctx.lineTo(x + 3 + t * 52, topY + 34 + Math.sin(f.wave + t * 3) * 4);
+    ctx.lineTo(x + 3 + t * cloth, topY + 34 * scale + Math.sin(f.wave + t * 3) * 4 * scale);
   }
   ctx.closePath();
   ctx.fill();
@@ -1561,6 +1633,74 @@ function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "ni
   }
 }
 
+const CORAL_COLORS = ["#f472b6", "#fb923c", "#a78bfa", "#f87171"];
+
+/** Coral clusters and swaying seaweed along the ocean floor, at two parallax depths. */
+function drawSeabed(ctx: CanvasRenderingContext2D, state: GameState, now: number) {
+  for (const layer of [0.45, 0.8]) {
+    const far = layer < 0.6;
+    const spacing = far ? 220 : 170;
+    const alpha = far ? 0.4 : 0.85;
+    const scale = far ? 0.7 : 1;
+    const startIndex = Math.floor((state.cameraX * layer) / spacing) - 1;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    for (let i = startIndex; i < startIndex + Math.ceil(CANVAS_WIDTH / spacing) + 3; i++) {
+      const worldX = i * spacing + ((i * 97) % 60);
+      const sx = worldX - state.cameraX * layer;
+      if (sx < -80 || sx > CANVAS_WIDTH + 80) continue;
+      const baseY = GROUND_Y + (far ? -10 : 4);
+      if (i % 2 === 0) {
+        drawCoral(ctx, sx, baseY, scale, CORAL_COLORS[Math.abs(i) % CORAL_COLORS.length]!);
+      } else {
+        drawSeaweed(ctx, sx, baseY, scale, now / 600 + i);
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function drawCoral(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, color: string) {
+  ctx.strokeStyle = color;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 7 * scale;
+  const h = 46 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y - h);
+  ctx.moveTo(x, y - h * 0.55);
+  ctx.lineTo(x - 18 * scale, y - h * 0.95);
+  ctx.moveTo(x, y - h * 0.4);
+  ctx.lineTo(x + 20 * scale, y - h * 0.85);
+  ctx.stroke();
+  ctx.lineWidth = 5 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x - 18 * scale, y - h * 0.95);
+  ctx.lineTo(x - 24 * scale, y - h * 1.25);
+  ctx.moveTo(x + 20 * scale, y - h * 0.85);
+  ctx.lineTo(x + 26 * scale, y - h * 1.2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y - 2 * scale, 16 * scale, 6 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSeaweed(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, phase: number) {
+  ctx.strokeStyle = "#15803d";
+  ctx.lineCap = "round";
+  for (const off of [-10 * scale, 4 * scale, 16 * scale]) {
+    const h = (70 + ((off * 7) % 30)) * scale;
+    ctx.lineWidth = 6 * scale;
+    ctx.beginPath();
+    ctx.moveTo(x + off, y);
+    for (let t = 0; t <= 1.001; t += 0.2) {
+      ctx.lineTo(x + off + Math.sin(phase + t * 3) * 12 * t * scale, y - h * t);
+    }
+    ctx.stroke();
+  }
+}
+
 function drawPalm(ctx: CanvasRenderingContext2D, x: number) {
   ctx.fillStyle = "#a16207";
   ctx.fillRect(x, GROUND_Y - 110, 12, 110);
@@ -1735,6 +1875,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
       ctx.closePath();
       ctx.fill();
     }
+    drawSeabed(ctx, state, now);
     ctx.fillStyle = "rgba(191,219,254,0.5)";
     for (let i = 0; i < 40; i++) {
       const bx = (i * 211 - state.cameraX * 0.4) % CANVAS_WIDTH;
@@ -2900,7 +3041,9 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   if (state.flagDrop && !state.flagDrop.collected) {
     ctx.fillStyle = "#4ade80";
     ctx.font = "bold 16px sans-serif";
-    const t = "Grab the victory flag to finish the level!";
+    const t = state.flagDrop.isSceneExit
+      ? "Reach the flag at the end to enter the next scene!"
+      : "Grab the big victory flag to finish the chapter!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 80);
   }
 
@@ -2909,7 +3052,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = "#4ade80";
     ctx.font = "bold 32px sans-serif";
-    const t = "Level Complete — flag taken!";
+    const t = "Chapter Complete — big flag taken!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, CANVAS_HEIGHT / 2 - 20);
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px sans-serif";
