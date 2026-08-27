@@ -1197,33 +1197,36 @@ function drawFlagDrop(ctx: CanvasRenderingContext2D, state: GameState) {
   if (!f || f.collected) return;
   const x = f.x - state.cameraX;
   if (x < -80 || x > CANVAS_WIDTH + 80) return;
-  const topY = f.y - FLAG_POLE_HEIGHT;
+  const scale = f.big ? 1.5 : 1;
+  const poleH = FLAG_POLE_HEIGHT * scale;
+  const topY = f.y - poleH;
+  const cloth = 52 * scale;
 
   ctx.save();
-  ctx.globalAlpha = 0.25 + Math.sin(f.wave) * 0.1;
-  ctx.fillStyle = f.color;
+  ctx.globalAlpha = (f.big ? 0.34 : 0.25) + Math.sin(f.wave) * 0.1;
+  ctx.fillStyle = f.big ? "#facc15" : f.color;
   ctx.beginPath();
-  ctx.arc(x, topY + 20, 46, 0, Math.PI * 2);
+  ctx.arc(x, topY + 20 * scale, 46 * scale, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
   ctx.fillStyle = "#a8a29e";
-  ctx.fillRect(x - 3, topY, 6, FLAG_POLE_HEIGHT);
+  ctx.fillRect(x - 3 * scale, topY, 6 * scale, poleH);
   ctx.fillStyle = "#facc15";
   ctx.beginPath();
-  ctx.arc(x, topY - 3, 5, 0, Math.PI * 2);
+  ctx.arc(x, topY - 3 * scale, 5 * scale, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = f.color;
+  ctx.fillStyle = f.big ? "#fbbf24" : f.color;
   ctx.beginPath();
   ctx.moveTo(x + 3, topY + 4);
   for (let i = 0; i <= 8; i++) {
     const t = i / 8;
-    ctx.lineTo(x + 3 + t * 52, topY + 4 + Math.sin(f.wave + t * 3) * 4);
+    ctx.lineTo(x + 3 + t * cloth, topY + 4 + Math.sin(f.wave + t * 3) * 4 * scale);
   }
   for (let i = 8; i >= 0; i--) {
     const t = i / 8;
-    ctx.lineTo(x + 3 + t * 52, topY + 34 + Math.sin(f.wave + t * 3) * 4);
+    ctx.lineTo(x + 3 + t * cloth, topY + 34 * scale + Math.sin(f.wave + t * 3) * 4 * scale);
   }
   ctx.closePath();
   ctx.fill();
