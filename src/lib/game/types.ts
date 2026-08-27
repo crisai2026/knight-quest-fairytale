@@ -1,4 +1,14 @@
-export type GameMode = "playing" | "levelcomplete" | "cutscene" | "dialog" | "shop" | "gameover" | "won";
+export type GameMode =
+  | "intro"
+  | "playing"
+  | "map"
+  | "minigame"
+  | "levelcomplete"
+  | "cutscene"
+  | "dialog"
+  | "shop"
+  | "gameover"
+  | "won";
 
 export type Weapon = "sword" | "bow";
 
@@ -7,15 +17,60 @@ export type Biome =
   | "night"
   | "beach"
   | "ocean"
-  | "village"
-  | "desert"
+  | "sky"
+  | "jungle"
   | "snow"
+  | "desert"
+  | "mountain"
+  | "village"
   | "dark"
   | "fire"
   | "castle";
 
+export type BossKind =
+  | "furryking"
+  | "owl"
+  | "crab"
+  | "shark"
+  | "cloud"
+  | "gorilla"
+  | "bear"
+  | "scorpion"
+  | "wizard"
+  | "dragon";
+
+export type Scene = "village" | "level";
+
+export type MinigameKind = "feed" | "loaves" | "flowers" | "targets";
+
+export type MinigameObject = {
+  x: number;
+  y: number;
+  vy: number;
+  color: string;
+  tag: string;
+  alive: boolean;
+  wobble: number;
+};
+
+export type MinigameState = {
+  kind: MinigameKind;
+  title: string;
+  hint: string;
+  timer: number;
+  score: number;
+  best: number;
+  objects: MinigameObject[];
+  spawnTimer: number;
+  prompt: string;
+  playerX: number;
+  finished: boolean;
+  payout: number;
+};
+
 export type GameState = {
   mode: GameMode;
+  scene: Scene;
   cameraX: number;
   levelIndex: number;
   levelName: string;
@@ -31,7 +86,9 @@ export type GameState = {
   particles: Particle[];
   arrows: Arrow[];
   pails: Pail[];
-  dragon: Dragon | null;
+  boss: Boss | null;
+  bossIntroDone: boolean;
+  bossDefeated: boolean;
   tntList: TNT[];
   keyDrop: KeyDrop | null;
   cage: Cage | null;
@@ -39,8 +96,6 @@ export type GameState = {
   messageTimer: number;
   cutsceneTimer: number;
   cutscenePhase: number;
-  castleCutsceneDone: boolean;
-  dragonIntroDone: boolean;
   keys: Record<string, boolean>;
   started: boolean;
   biome: Biome;
@@ -51,8 +106,14 @@ export type GameState = {
   dialogLines: string[];
   dialogIndex: number;
   dialogSpeaker: string;
-  villageFree: boolean;
   shopMessage: string;
+  /** How many levels are playable (1 = only level 1). */
+  unlockedLevels: number;
+  /** Level chosen at the world map, shown by the village portal. */
+  selectedLevel: number;
+  mapCursor: number;
+  minigame: MinigameState | null;
+  bestScores: Record<string, number>;
 };
 
 export type CoinDrop = {
@@ -72,14 +133,8 @@ export type Npc = {
   x: number;
   color: string;
   lines: string[];
-  /** Quest item this villager is looking for. */
-  wants?: string;
-  /** Quest item handed over when talked to (or when `wants` is delivered). */
-  gives?: string;
-  /** Line said once the quest is settled. */
-  doneLine?: string;
-  /** Coins handed out when the quest is completed. */
-  reward?: number;
+  /** Mini-game this villager runs. */
+  minigame?: MinigameKind;
   done: boolean;
 };
 
@@ -106,9 +161,7 @@ export type Player = {
   tnt: number;
   hasKey: boolean;
   coins: number;
-  /** Quest items collected in the village. */
   items: string[];
-  /** Set once the village is reached, unlocking village respawn. */
   reachedVillage: boolean;
 };
 
@@ -190,30 +243,37 @@ export type Cage = {
   open: boolean;
 };
 
-export type DragonState = "flying" | "landing" | "resting" | "taking_off";
+export type BossPhase = "active" | "landing" | "resting" | "taking_off";
 
-export type Dragon = {
+export type Boss = {
+  kind: BossKind;
+  name: string;
   x: number;
   y: number;
   width: number;
   height: number;
   health: number;
   maxHealth: number;
-  state: DragonState;
+  state: BossPhase;
   timer: number;
-  fireballs: Fireball[];
+  projectiles: Projectile[];
   restCount: number;
   flash: number;
   dir: number;
+  flying: boolean;
+  restY: number;
+  hoverY: number;
 };
 
-export type Fireball = {
+export type Projectile = {
   x: number;
   y: number;
   vx: number;
   vy: number;
   radius: number;
   life: number;
+  color: string;
+  shape: "ball" | "bolt" | "rock" | "feather";
 };
 
 export type TNT = {
