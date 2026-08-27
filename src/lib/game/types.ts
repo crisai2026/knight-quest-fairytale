@@ -92,6 +92,7 @@ export type GameState = {
   bossDefeated: boolean;
   tntList: TNT[];
   keyDrop: KeyDrop | null;
+  flagDrop: FlagDrop | null;
   cage: Cage | null;
   message: string;
   messageTimer: number;
