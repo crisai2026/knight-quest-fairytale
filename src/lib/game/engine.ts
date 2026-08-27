@@ -12,6 +12,8 @@ import type {
   Biome,
   BossKind,
   Npc,
+  FoodKind,
+  FoodDrop,
 } from "./types";
 import {
   LEVELS,
@@ -2437,6 +2439,58 @@ function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
 }
 
+/** Throwaway enemy record so the intro can reuse the real monster art. */
+function introMinion(kind: Enemy["kind"], x: number, y: number, wobble = 0): Enemy {
+  return {
+    kind,
+    x,
+    y,
+    baseY: y,
+    width: kind === "winged" ? 42 : 44,
+    height: kind === "winged" ? 30 : 40,
+    vx: 1,
+    vy: 0,
+    health: 1,
+    patrolStart: x,
+    patrolEnd: x,
+    flash: 0,
+    wobble,
+  };
+}
+
+function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
+  const level = LEVELS[state.pendingLevel]!;
+  ctx.fillStyle = "rgba(2,6,23,0.88)";
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fbbf24";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText(`LEVEL ${state.pendingLevel + 1}`, CANVAS_WIDTH / 2, 130);
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 40px sans-serif";
+  ctx.fillText(level.name, CANVAS_WIDTH / 2, 180);
+
+  drawBossFace(ctx, level.boss, CANVAS_WIDTH / 2, 300, 70);
+
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText(`Boss: ${BOSSES[level.boss].name}`, CANVAS_WIDTH / 2, 410);
+
+  const pulse = 0.6 + Math.abs(Math.sin(Date.now() / 400)) * 0.4;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = "#22c55e";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText("CLICK OR TAP TO START", CANVAS_WIDTH / 2, 480);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "15px sans-serif";
+  ctx.fillText("(or press any key • Esc to stay in the village)", CANVAS_WIDTH / 2, 516);
+  ctx.textAlign = "left";
+}
+
 function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "rgba(2,6,23,0.92)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -2552,12 +2606,10 @@ function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillRect(px, py, 28, 40);
     ctx.fillStyle = "#fcd34d";
     ctx.fillRect(px + 4, py - 16, 20, 16);
-    ctx.fillStyle = "#be123c";
-    for (const off of [-40, 40]) {
-      ctx.beginPath();
-      ctx.ellipse(px + 14 + off, py - 30, 22, 12, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // the actual level monsters carry her off: furry, tentacle and a winged one
+    drawEnemy(ctx, introMinion("furry", px - 58, py + 6), 0);
+    drawEnemy(ctx, introMinion("tentacle", px + 34, py + 6), 0);
+    drawEnemy(ctx, introMinion("winged", px - 6, py - 62, t * 0.1), 0);
   }
 
   if (phase >= 4) {
@@ -2760,6 +2812,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(t2, CANVAS_WIDTH / 2 - ctx.measureText(t2).width / 2, CANVAS_HEIGHT / 2 + 20);
   }
 
+  if (state.mode === "levelstart") drawLevelStart(ctx, state);
   if (state.mode === "map") drawMapScreen(ctx, state);
   if (state.mode === "dialog") drawDialog(ctx, state);
   if (state.mode === "shop") drawShop(ctx, state);
