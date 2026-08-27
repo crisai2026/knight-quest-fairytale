@@ -1075,11 +1075,107 @@ function defeatBoss(state: GameState, b: Boss) {
     return;
   }
 
-  state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
-  state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
-  saveProgress(state);
-  state.mode = "levelcomplete";
-  state.levelCompleteTimer = 0;
+  playMusic(null);
+  state.flagDrop = {
+    x: b.x + b.width / 2,
+    y: b.y + b.height / 2,
+    vy: -4,
+    planted: false,
+    collected: false,
+    color: FLAG_COLORS[state.biome] ?? "#facc15",
+    wave: 0,
+  };
+  showMessage(state, `${b.name} defeated! Grab the victory flag!`, 200);
+}
+
+const FLAG_COLORS: Partial<Record<Biome, string>> = {
+  sunny: "#22c55e",
+  night: "#6366f1",
+  beach: "#fbbf24",
+  ocean: "#0ea5e9",
+  sky: "#e0f2fe",
+  jungle: "#15803d",
+  snow: "#f8fafc",
+  desert: "#f59e0b",
+  mountain: "#93c5fd",
+  dark: "#7c3aed",
+  fire: "#ef4444",
+  castle: "#b91c1c",
+};
+
+const FLAG_POLE_HEIGHT = 78;
+
+/** Boss victory flag: falls, plants itself, then the knight walks into it to finish the level. */
+function updateFlagDrop(state: GameState) {
+  const f = state.flagDrop;
+  if (!f || f.collected) return;
+  const p = state.player;
+
+  f.wave += 0.12;
+  if (!f.planted) {
+    f.vy += GRAVITY * 0.4;
+    f.y += f.vy;
+    if (f.y >= GROUND_Y) {
+      f.y = GROUND_Y;
+      f.vy = 0;
+      f.planted = true;
+      spawnParticle(state, f.x, f.y - FLAG_POLE_HEIGHT, f.color, 14, 3);
+    }
+  }
+
+  const near =
+    Math.abs(p.x + p.width / 2 - f.x) < 46 && p.y + p.height > f.y - FLAG_POLE_HEIGHT - 20 && p.y < f.y + 10;
+  if (f.planted && near) {
+    f.collected = true;
+    sfx.flagRaise();
+    spawnParticle(state, f.x, f.y - FLAG_POLE_HEIGHT, f.color, 26, 5);
+    spawnParticle(state, f.x, f.y - 30, "#ffffff", 16, 4);
+    state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
+    state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
+    saveProgress(state);
+    state.mode = "levelcomplete";
+    state.levelCompleteTimer = 0;
+  }
+}
+
+function drawFlagDrop(ctx: CanvasRenderingContext2D, state: GameState) {
+  const f = state.flagDrop;
+  if (!f || f.collected) return;
+  const x = f.x - state.cameraX;
+  if (x < -80 || x > CANVAS_WIDTH + 80) return;
+  const topY = f.y - FLAG_POLE_HEIGHT;
+
+  ctx.save();
+  ctx.globalAlpha = 0.25 + Math.sin(f.wave) * 0.1;
+  ctx.fillStyle = f.color;
+  ctx.beginPath();
+  ctx.arc(x, topY + 20, 46, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = "#a8a29e";
+  ctx.fillRect(x - 3, topY, 6, FLAG_POLE_HEIGHT);
+  ctx.fillStyle = "#facc15";
+  ctx.beginPath();
+  ctx.arc(x, topY - 3, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = f.color;
+  ctx.beginPath();
+  ctx.moveTo(x + 3, topY + 4);
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    ctx.lineTo(x + 3 + t * 52, topY + 4 + Math.sin(f.wave + t * 3) * 4);
+  }
+  for (let i = 8; i >= 0; i--) {
+    const t = i / 8;
+    ctx.lineTo(x + 3 + t * 52, topY + 34 + Math.sin(f.wave + t * 3) * 4);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
 }
 
 function updateTNT(state: GameState) {
