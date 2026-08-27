@@ -982,9 +982,22 @@ function bossAttack(state: GameState, b: Boss) {
     case "owl":
       push({ vx: (dx / dist) * 6, vy: (dy / dist) * 6, radius: 8, life: 150 });
       break;
-    case "shark":
-      push({ vx: (dx / dist) * 5.5, vy: (dy / dist) * 5.5, radius: 9, life: 160 });
+    case "shark": {
+      // three-shot spread of water bolts
+      for (const spread of [-0.28, 0, 0.28]) {
+        const ca = Math.cos(spread);
+        const sa = Math.sin(spread);
+        const nx = dx / dist;
+        const ny = dy / dist;
+        push({
+          vx: (nx * ca - ny * sa) * 6,
+          vy: (nx * sa + ny * ca) * 6,
+          radius: 9,
+          life: 170,
+        });
+      }
       break;
+    }
     case "scorpion":
       push({ vx: dx > 0 ? 7 : -7, vy: -2, radius: 8, life: 140 });
       break;
@@ -1618,6 +1631,74 @@ function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "ni
   }
 }
 
+const CORAL_COLORS = ["#f472b6", "#fb923c", "#a78bfa", "#f87171"];
+
+/** Coral clusters and swaying seaweed along the ocean floor, at two parallax depths. */
+function drawSeabed(ctx: CanvasRenderingContext2D, state: GameState, now: number) {
+  for (const layer of [0.45, 0.8]) {
+    const far = layer < 0.6;
+    const spacing = far ? 220 : 170;
+    const alpha = far ? 0.4 : 0.85;
+    const scale = far ? 0.7 : 1;
+    const startIndex = Math.floor((state.cameraX * layer) / spacing) - 1;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    for (let i = startIndex; i < startIndex + Math.ceil(CANVAS_WIDTH / spacing) + 3; i++) {
+      const worldX = i * spacing + ((i * 97) % 60);
+      const sx = worldX - state.cameraX * layer;
+      if (sx < -80 || sx > CANVAS_WIDTH + 80) continue;
+      const baseY = GROUND_Y + (far ? -10 : 4);
+      if (i % 2 === 0) {
+        drawCoral(ctx, sx, baseY, scale, CORAL_COLORS[Math.abs(i) % CORAL_COLORS.length]!);
+      } else {
+        drawSeaweed(ctx, sx, baseY, scale, now / 600 + i);
+      }
+    }
+    ctx.restore();
+  }
+}
+
+function drawCoral(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, color: string) {
+  ctx.strokeStyle = color;
+  ctx.lineCap = "round";
+  ctx.lineWidth = 7 * scale;
+  const h = 46 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y - h);
+  ctx.moveTo(x, y - h * 0.55);
+  ctx.lineTo(x - 18 * scale, y - h * 0.95);
+  ctx.moveTo(x, y - h * 0.4);
+  ctx.lineTo(x + 20 * scale, y - h * 0.85);
+  ctx.stroke();
+  ctx.lineWidth = 5 * scale;
+  ctx.beginPath();
+  ctx.moveTo(x - 18 * scale, y - h * 0.95);
+  ctx.lineTo(x - 24 * scale, y - h * 1.25);
+  ctx.moveTo(x + 20 * scale, y - h * 0.85);
+  ctx.lineTo(x + 26 * scale, y - h * 1.2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y - 2 * scale, 16 * scale, 6 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSeaweed(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, phase: number) {
+  ctx.strokeStyle = "#15803d";
+  ctx.lineCap = "round";
+  for (const off of [-10 * scale, 4 * scale, 16 * scale]) {
+    const h = (70 + ((off * 7) % 30)) * scale;
+    ctx.lineWidth = 6 * scale;
+    ctx.beginPath();
+    ctx.moveTo(x + off, y);
+    for (let t = 0; t <= 1.001; t += 0.2) {
+      ctx.lineTo(x + off + Math.sin(phase + t * 3) * 12 * t * scale, y - h * t);
+    }
+    ctx.stroke();
+  }
+}
+
 function drawPalm(ctx: CanvasRenderingContext2D, x: number) {
   ctx.fillStyle = "#a16207";
   ctx.fillRect(x, GROUND_Y - 110, 12, 110);
@@ -1792,6 +1873,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
       ctx.closePath();
       ctx.fill();
     }
+    drawSeabed(ctx, state, now);
     ctx.fillStyle = "rgba(191,219,254,0.5)";
     for (let i = 0; i < 40; i++) {
       const bx = (i * 211 - state.cameraX * 0.4) % CANVAS_WIDTH;
@@ -2957,7 +3039,9 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   if (state.flagDrop && !state.flagDrop.collected) {
     ctx.fillStyle = "#4ade80";
     ctx.font = "bold 16px sans-serif";
-    const t = "Grab the victory flag to finish the level!";
+    const t = state.flagDrop.isSceneExit
+      ? "Reach the flag at the end to enter the next scene!"
+      : "Grab the big victory flag to finish the chapter!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 80);
   }
 
@@ -2966,7 +3050,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = "#4ade80";
     ctx.font = "bold 32px sans-serif";
-    const t = "Level Complete — flag taken!";
+    const t = "Chapter Complete — big flag taken!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, CANVAS_HEIGHT / 2 - 20);
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px sans-serif";
