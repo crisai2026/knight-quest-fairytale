@@ -130,7 +130,18 @@ export type GameState = {
   unlockedLevels: number;
   /** Level chosen at the world map, shown by the village portal. */
   selectedLevel: number;
+  /** Scene of the selected chapter the portal will start. */
+  selectedScene: number;
+  /** Scenes cleared per chapter index (used to unlock scenes). */
+  sceneProgress: Record<number, number>;
+  /** World map screen: chapter grid or the scene grid of one chapter. */
+  mapView: "chapters" | "scenes";
+  /** Chapter whose scenes the map is showing. */
+  mapChapter: number;
+  /** Cursor inside the scene grid. */
+  mapSceneCursor: number;
   mapCursor: number;
+
   minigame: MinigameState | null;
   bestScores: Record<string, number>;
 };
