@@ -1,4 +1,4 @@
-import type { Biome, BossKind, Chest, ChestItem, EnemyKind, Npc, Platform } from "./types";
+import type { Biome, BossKind, Chest, ChestItem, EnemyKind, Npc, Platform, SceneSky } from "./types";
 
 export const GROUND_Y = 520;
 
