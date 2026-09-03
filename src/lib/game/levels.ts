@@ -123,6 +123,8 @@ export const LEVELS: LevelDef[] = [
       { kind: "furry", x: 1900, patrolStart: 1840, patrolEnd: 2100 },
     ],
     chests: [chest(340, "bandage"), chest(1000, "food"), chest(1720, "bandage")],
+    scenes: FOREST_SCENES,
+
   },
   {
     name: "Level 2 — Night Forest",
