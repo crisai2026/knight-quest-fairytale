@@ -3547,41 +3547,39 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     return;
   }
 
-  drawBackground(ctx, state);
-  drawGroundStrip(ctx, state);
+  if (state.topDown) {
+    drawVillageTopDown(ctx, state);
+  } else {
+    drawBackground(ctx, state);
+    drawGroundStrip(ctx, state);
 
-  if (state.scene === "village") {
-    drawMapBoard(ctx, state);
-    drawPortal(ctx, state);
+    for (const platform of state.platforms) {
+      if (platform.y === GROUND_Y) continue;
+      if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
+      drawPlatform(ctx, platform, state.cameraX, state.biome);
+    }
+
+    for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
+    for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
+    for (const e of state.enemies) drawEnemy(ctx, e, state.cameraX);
+
+    drawCage(ctx, state);
+    drawKeyDrop(ctx, state);
+    drawFlagDrop(ctx, state);
+    drawCoins(ctx, state);
+    drawFoods(ctx, state);
+
+    if (state.boss) drawBoss(ctx, state.boss, state.cameraX);
+
+    drawPlayer(ctx, state.player, state.cameraX);
+
+    for (const t of state.tntList) drawTNT(ctx, t, state.cameraX);
+    for (const a of state.arrows) drawArrow(ctx, a, state.cameraX);
+
+    drawParticles(ctx, state);
   }
 
-  for (const platform of state.platforms) {
-    if (platform.y === GROUND_Y) continue;
-    if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
-    drawPlatform(ctx, platform, state.cameraX, state.biome);
-  }
 
-  for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
-  for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
-  for (const e of state.enemies) drawEnemy(ctx, e, state.cameraX);
-
-  drawCage(ctx, state);
-  drawKeyDrop(ctx, state);
-  drawFlagDrop(ctx, state);
-  drawCoins(ctx, state);
-  drawFoods(ctx, state);
-
-  const talkTarget = state.npcs.length ? nearestNpc(state) : null;
-  for (const npc of state.npcs) drawNpc(ctx, npc, state.cameraX, npc === talkTarget && state.mode === "playing");
-
-  if (state.boss) drawBoss(ctx, state.boss, state.cameraX);
-
-  drawPlayer(ctx, state.player, state.cameraX);
-
-  for (const t of state.tntList) drawTNT(ctx, t, state.cameraX);
-  for (const a of state.arrows) drawArrow(ctx, a, state.cameraX);
-
-  drawParticles(ctx, state);
 
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(0, CANVAS_HEIGHT - 30, CANVAS_WIDTH, 30);
