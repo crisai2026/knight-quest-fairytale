@@ -3354,6 +3354,35 @@ function drawIntroScene(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
   for (let i = 0; i < 4; i++) drawHouse(ctx, 60 + i * 200);
 
+  if (state.cutscenePhase < VILLAGE_PAGES) {
+    // Peaceful village: the old stone well and its people going about their day.
+    ctx.fillStyle = "#78716c";
+    ctx.fillRect(600, GROUND_Y - 40, 70, 40);
+    ctx.fillStyle = "#44403c";
+    ctx.fillRect(596, GROUND_Y - 46, 78, 8);
+    ctx.fillStyle = "#7f1d1d";
+    ctx.fillRect(592, GROUND_Y - 92, 86, 12);
+    ctx.fillStyle = "#57534e";
+    ctx.fillRect(604, GROUND_Y - 88, 6, 44);
+    ctx.fillRect(660, GROUND_Y - 88, 6, 44);
+    const folk: [number, string][] = [
+      [200, "#f59e0b"],
+      [330, "#38bdf8"],
+      [470, "#a3e635"],
+      [760, "#f472b6"],
+    ];
+    folk.forEach(([x, color], i) => {
+      const bob = Math.sin(state.cutsceneTimer * 0.05 + i) * 3;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, GROUND_Y - 44 + bob, 22, 44);
+      ctx.fillStyle = "#fcd7b6";
+      ctx.beginPath();
+      ctx.arc(x + 11, GROUND_Y - 54 + bob, 11, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+
   // The portal the monsters march the princess into.
   const portalX = 700;
   if (phase >= 2) {
