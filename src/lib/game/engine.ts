@@ -336,6 +336,13 @@ export function loadLevel(
   state.windBlowing = false;
   state.bounces = (scene?.bounces ?? []).map((b) => ({ ...b }));
   state.sceneHint = scene?.hint ?? "";
+  state.sky = scene?.sky ?? "clear";
+  state.slippery = scene?.slippery === true;
+  state.fog = scene?.fog === true;
+  state.fallers = [];
+  state.fallerTimer = scene?.falling === true ? 1 : 0;
+  state.timeLimit = (scene?.timeLimit ?? 0) * 60;
+  state.timeLeft = state.timeLimit;
   state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
   state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
