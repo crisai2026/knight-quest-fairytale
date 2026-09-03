@@ -3905,6 +3905,17 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     drawFallers(ctx, state);
     drawParticles(ctx, state);
     drawFogOverlay(ctx, state);
+
+    if (state.timeLimit > 0) {
+      const secs = Math.ceil(state.timeLeft / 60);
+      ctx.font = "bold 30px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(CANVAS_WIDTH / 2 - 70, 16, 140, 44);
+      ctx.fillStyle = secs <= 10 ? "#f87171" : "#fde68a";
+      ctx.fillText(`${secs}s`, CANVAS_WIDTH / 2, 48);
+      ctx.textAlign = "left";
+    }
   }
 
 
