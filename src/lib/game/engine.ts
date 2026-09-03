@@ -632,12 +632,18 @@ function updatePlayer(state: GameState) {
 
 /* ---------------- Village hub ---------------- */
 
+/** Feet position of the knight in the top-down village. */
+function feet(p: Player) {
+  return { x: p.x + p.width / 2, y: p.y + p.height };
+}
+
 function nearestNpc(state: GameState): Npc | null {
   const p = state.player;
+  const f = feet(p);
   let best: Npc | null = null;
-  let bestDist = 80;
+  let bestDist = 78;
   for (const npc of state.npcs) {
-    const d = Math.abs(p.x + p.width / 2 - npc.x);
+    const d = Math.hypot(f.x - npc.x, f.y - npc.y);
     if (d < bestDist) {
       best = npc;
       bestDist = d;
@@ -646,12 +652,86 @@ function nearestNpc(state: GameState): Npc | null {
   return best;
 }
 
+const VILLAGE_SOLIDS: Rect[] = villageSolids();
+
+function overlaps(x: number, y: number, w: number, h: number, r: Rect) {
+  return x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y;
+}
+
+/** 8-way movement with per-axis collision against the town's solid rects. */
+function moveTopDown(state: GameState) {
+  const p = state.player;
+  const keys = state.keys;
+  const sprinting = keys["shift"] && p.hunger > 0;
+  const speed = sprinting ? SPRINT_SPEED * 0.8 : WALK_SPEED;
+
+  let dx = 0;
+  let dy = 0;
+  if (keys["a"] || keys["arrowleft"]) dx -= 1;
+  if (keys["d"] || keys["arrowright"]) dx += 1;
+  if (keys["w"] || keys["arrowup"]) dy -= 1;
+  if (keys["s"] || keys["arrowdown"]) dy += 1;
+
+  if (dx !== 0 && dy !== 0) {
+    dx *= Math.SQRT1_2;
+    dy *= Math.SQRT1_2;
+  }
+
+  if (dx !== 0 || dy !== 0) {
+    p.walkT += 0.25;
+    if (Math.abs(dx) >= Math.abs(dy)) p.facing4 = dx < 0 ? "left" : "right";
+    else p.facing4 = dy < 0 ? "up" : "down";
+    if (dx < 0) p.facing = "left";
+    else if (dx > 0) p.facing = "right";
+    if (sprinting) {
+      p.hunger = Math.max(0, p.hunger - 0.008);
+      if (p.hunger <= 0) showMessage(state, "Too hungry to sprint!");
+    }
+  }
+
+  // Collision box: the knight's feet only, so he can walk in front of walls.
+  const bw = p.width - 6;
+  const bh = 18;
+  const bx = () => p.x + 3;
+  const by = () => p.y + p.height - bh;
+
+  p.x += dx * speed;
+  for (const r of VILLAGE_SOLIDS) {
+    if (!overlaps(bx(), by(), bw, bh, r)) continue;
+    p.x = dx > 0 ? r.x - bw - 3 : r.x + r.w - 3;
+  }
+
+  p.y += dy * speed;
+  for (const r of VILLAGE_SOLIDS) {
+    if (!overlaps(bx(), by(), bw, bh, r)) continue;
+    p.y = dy > 0 ? r.y - p.height : r.y + r.h - p.height + bh;
+  }
+
+  p.x = clamp(p.x, 0, VILLAGE_W - p.width);
+  p.y = clamp(p.y, 0, VILLAGE_H - p.height);
+  p.vx = 0;
+  p.vy = 0;
+  p.onGround = true;
+
+  // Camera follows in both axes.
+  state.cameraX += (p.x + p.width / 2 - CANVAS_WIDTH / 2 - state.cameraX) * 0.12;
+  state.cameraY += (p.y + p.height / 2 - CANVAS_HEIGHT / 2 - state.cameraY) * 0.12;
+  state.cameraX = clamp(state.cameraX, 0, VILLAGE_W - CANVAS_WIDTH);
+  state.cameraY = clamp(state.cameraY, 0, VILLAGE_H - CANVAS_HEIGHT);
+}
+
 function updateVillage(state: GameState) {
   const p = state.player;
-  const cx = p.x + p.width / 2;
+  moveTopDown(state);
+  if (state.mode !== "playing") return;
+  const f = feet(p);
+
+  if (keyRHandled(state)) {
+    /* weapon switch handled elsewhere */
+  }
 
   // World map board
-  if (Math.abs(cx - MAP_BOARD_X) < 70) {
+  if (Math.hypot(f.x - BOARD_POS.x, f.y - BOARD_POS.y) < 90) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
       state.mode = "map";
@@ -664,7 +744,7 @@ function updateVillage(state: GameState) {
   }
 
   // Portal
-  if (Math.abs(cx - PORTAL_X) < 80) {
+  if (Math.hypot(f.x - PORTAL_POS.x, f.y - PORTAL_POS.y) < 100) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
       state.pendingLevel = state.selectedLevel;
@@ -674,6 +754,7 @@ function updateVillage(state: GameState) {
     }
     showMessage(state, `Press E to enter the ${sceneLabel(state.selectedLevel, state.selectedScene)} portal`, 20);
   }
+
 
   const npc = nearestNpc(state);
   if (!npc || !state.keys["e"]) return;
