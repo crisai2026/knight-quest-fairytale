@@ -293,7 +293,7 @@ export function drawVillageProps(
   ctx.save();
   ctx.translate(-camX, -camY);
   const items: { y: number; draw: (c: CanvasRenderingContext2D) => void }[] = [
-    ...VILLAGE_PROPS.filter((p) => p.kind !== "fence-h" || p.w < VILLAGE_W).map((p) => ({
+    ...VILLAGE_PROPS.filter((p) => !isOuterWall(p)).map((p) => ({
       y: p.y + p.h,
       draw: (c: CanvasRenderingContext2D) => drawProp(c, p),
     })),
