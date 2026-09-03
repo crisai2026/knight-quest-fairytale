@@ -109,34 +109,40 @@ const MUSHROOM_Y = GROUND_Y - 26;
  */
 const FOREST_SCENES: SceneDef[] = [
   {
-    // 1. Warmup: a couple of monsters, wide platforms.
+    // 1. Misty dawn: short, calm, but you can barely see ahead.
     name: `Scene 1 — ${FOREST_SCENE_NAMES[0]}`,
     width: 1800,
+    sky: "mist",
+    fog: true,
     platforms: [plat(320, 430, 180), plat(680, 360, 170), plat(1080, 420, 180), plat(1420, 350, 160)],
     enemies: [furry(700), furry(1250)],
     chests: [chest(380, "food"), chest(1200, "bandage")],
-    hint: "A gentle walk — watch for monsters!",
+    hint: "Dawn mist — you can barely see. Walk carefully!",
   },
   {
-    // 2. Jumping scene: many platforms, barely any monsters.
+    // 2. Sunny morning: pure platforming while acorns rain from the trees.
     name: `Scene 2 — ${FOREST_SCENE_NAMES[1]}`,
     width: 2200,
+    sky: "dawn",
+    falling: true,
     platforms: [
       plat(260, 430, 150), plat(480, 350, 140), plat(700, 430, 150), plat(920, 350, 140),
       plat(1140, 430, 150), plat(1360, 350, 140), plat(1580, 430, 150), plat(1800, 350, 140),
     ],
     enemies: [furry(1050)],
     chests: [chest(520, "food", 350 - 24), chest(1640, "food", 430 - 24)],
-    hint: "Hop across the high platforms — food waits up top!",
+    hint: "Acorns rain from the treetops — keep moving while you climb!",
   },
   {
-    // 3. Monster gauntlet: flat ground, a long patrol line.
+    // 3. Rainy gauntlet: wet, slippery ground and a whole pack of monsters.
     name: `Scene 3 — ${FOREST_SCENE_NAMES[2]}`,
     width: 2500,
+    sky: "rain",
+    slippery: true,
     platforms: [plat(900, 400, 160), plat(1700, 400, 160)],
     enemies: [furry(480), furry(860), furry(1240), furry(1620), furry(2000)],
     chests: [chest(320, "bandage"), chest(1500, "food")],
-    hint: "A whole pack blocks the path — fight or sprint through!",
+    hint: "Rain! The mud is slippery and a whole pack blocks the path.",
   },
   {
     // 4. Wind scene: gusts push the knight backwards.
