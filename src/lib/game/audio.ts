@@ -167,6 +167,16 @@ export const sfx = {
     tone({ type: "square", from: 300, to: 80, duration: 0.4, volume: 0.14, delay: 0.1 });
     noise(0.4, "lowpass", 600, 0.2, 0.05);
   },
+  /** A gust of wind sweeping through the trees. */
+  gust() {
+    noise(1.1, "bandpass", 700, 0.18, 0, 300);
+    noise(0.9, "highpass", 1600, 0.08, 0.15);
+  },
+  /** Springy bounce off a mushroom. */
+  bounce() {
+    tone({ type: "square", from: 300, to: 900, duration: 0.18, volume: 0.2 });
+    tone({ type: "triangle", from: 150, to: 450, duration: 0.18, volume: 0.14, delay: 0.02 });
+  },
   hurt() {
     tone({ type: "square", from: 320, to: 120, duration: 0.2, volume: 0.2 });
   },
