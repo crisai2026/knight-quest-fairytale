@@ -68,6 +68,7 @@ const BIOME_NAMES: Record<Biome, string> = {
 
 type Progress = {
   unlockedLevels: number;
+  sceneProgress: Record<number, number>;
   coins: number;
   maxHealth: number;
   hasBow: boolean;
@@ -76,7 +77,15 @@ type Progress = {
 };
 
 function loadProgress(): Progress {
-  const fallback: Progress = { unlockedLevels: 1, coins: 0, maxHealth: 5, hasBow: true, arrows: 20, bestScores: {} };
+  const fallback: Progress = {
+    unlockedLevels: 1,
+    sceneProgress: {},
+    coins: 0,
+    maxHealth: 5,
+    hasBow: true,
+    arrows: 20,
+    bestScores: {},
+  };
   if (typeof window === "undefined") return fallback;
   try {
     const raw = window.localStorage.getItem(SAVE_KEY);
@@ -92,6 +101,7 @@ function saveProgress(state: GameState) {
   try {
     const data: Progress = {
       unlockedLevels: state.unlockedLevels,
+      sceneProgress: state.sceneProgress,
       coins: state.player.coins,
       maxHealth: state.player.maxHealth,
       hasBow: state.player.hasBow,
@@ -237,6 +247,11 @@ function baseState(carry: Player, progress: Progress): GameState {
     shopMessage: "",
     unlockedLevels: progress.unlockedLevels,
     selectedLevel: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
+    selectedScene: 0,
+    sceneProgress: { ...progress.sceneProgress },
+    mapView: "chapters",
+    mapChapter: 0,
+    mapSceneCursor: 0,
     mapCursor: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
     minigame: null,
     bestScores: progress.bestScores,
@@ -353,6 +368,7 @@ function replaceState(state: GameState, next: GameState) {
 function progressFrom(state: GameState): Progress {
   return {
     unlockedLevels: state.unlockedLevels,
+    sceneProgress: state.sceneProgress,
     coins: state.player.coins,
     maxHealth: state.player.maxHealth,
     hasBow: state.player.hasBow,
@@ -366,9 +382,9 @@ export function goToVillage(state: GameState) {
   replaceState(state, loadVillage(state.player, progressFrom(state)));
 }
 
-export function startLevel(state: GameState, levelIndex: number) {
+export function startLevel(state: GameState, levelIndex: number, sceneIndex = 0) {
   saveProgress(state);
-  replaceState(state, loadLevel(levelIndex, state.player, progressFrom(state)));
+  replaceState(state, loadLevel(levelIndex, state.player, progressFrom(state), sceneIndex));
 }
 
 export function restartLevel(state: GameState) {
@@ -381,9 +397,26 @@ export function restartLevel(state: GameState) {
   else replaceState(state, loadLevel(state.levelIndex, fresh, progress, sceneIndex));
 }
 
+/** Remember that a scene was beaten so the next one shows up unlocked on the map. */
+function markSceneCleared(state: GameState, levelIndex: number, sceneIndex: number) {
+  const cleared = state.sceneProgress[levelIndex] ?? 0;
+  if (sceneIndex + 1 > cleared) state.sceneProgress = { ...state.sceneProgress, [levelIndex]: sceneIndex + 1 };
+}
+
+/** How many scenes a chapter has (1 for classic single-scene chapters). */
+export function sceneCountOf(levelIndex: number) {
+  return LEVELS[levelIndex]?.scenes?.length ?? 1;
+}
+
+/** Scenes the player may pick on the map for this chapter. */
+function unlockedScenes(state: GameState, levelIndex: number) {
+  return Math.min(sceneCountOf(levelIndex), (state.sceneProgress[levelIndex] ?? 0) + 1);
+}
+
 /** Move on to the next scene of the current chapter, keeping the knight's stats. */
 function advanceScene(state: GameState) {
   const next = state.sceneIndex + 1;
+  markSceneCleared(state, state.levelIndex, state.sceneIndex);
   const carry = { ...state.player };
   const progress = progressFrom(state);
   const levelIndex = state.levelIndex;
@@ -602,6 +635,7 @@ function updateVillage(state: GameState) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
       state.mode = "map";
+      state.mapView = "chapters";
       state.mapCursor = state.selectedLevel;
       sfx.talk();
       return;
@@ -1250,6 +1284,7 @@ function updateCelebration(state: GameState) {
     advanceScene(state);
     return;
   }
+  markSceneCleared(state, state.levelIndex, state.sceneIndex);
   state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
   state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
   saveProgress(state);
@@ -1645,7 +1680,7 @@ export function confirmLevelStart(state: GameState) {
   if (state.mode !== "levelstart") return false;
   const level = state.pendingLevel;
   state.mode = "playing";
-  startLevel(state, level);
+  startLevel(state, level, state.selectedScene);
   return true;
 }
 
