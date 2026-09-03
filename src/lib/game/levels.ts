@@ -58,6 +58,56 @@ const FOREST_PLATFORMS: Platform[] = [
 /** Distance from the right edge where the boss arena starts. */
 export const BOSS_ARENA_MARGIN = 900;
 
+/** Sunny Forest is a 10-scene chapter; scene 10 is the Furry King arena. */
+const FOREST_SCENE_NAMES = [
+  "Forest Path",
+  "Mossy Clearing",
+  "Fallen Logs",
+  "Bramble Hollow",
+  "Sunlit Glade",
+  "Old Oak Ridge",
+  "Mushroom Grove",
+  "Thorn Thicket",
+  "Wolf Den Trail",
+  "The Furry King's Grove",
+];
+
+function forestScene(i: number): SceneDef {
+  const name = `Scene ${i + 1} — ${FOREST_SCENE_NAMES[i]}`;
+  if (i === 9) {
+    return {
+      name,
+      width: 2200,
+      platforms: [plat(320, 430, 170), plat(700, 350, 150)],
+      enemies: [{ kind: "furry", x: 620, patrolStart: 500, patrolEnd: 880 }],
+      chests: [chest(300, "firstaid"), chest(820, "food")],
+      boss: true,
+    };
+  }
+  const width = 1800 + i * 130;
+  const step = 360 - i * 12;
+  const count = 3 + Math.floor(i / 3);
+  const platforms: Platform[] = [];
+  const enemies: EnemySpawn[] = [];
+  const chests: Chest[] = [];
+  for (let k = 0; k < count + 1; k++) {
+    const x = 300 + k * step;
+    if (x + 160 > width - 220) break;
+    platforms.push(plat(x, k % 2 === 0 ? 430 : 350, 160 - i * 4));
+  }
+  for (let k = 0; k < count; k++) {
+    const x = 420 + k * (step + 60);
+    if (x > width - 260) break;
+    enemies.push({ kind: "furry", x, patrolStart: x - 90, patrolEnd: x + 190 });
+  }
+  chests.push(chest(360, i % 2 === 0 ? "food" : "bandage"));
+  if (width > 2000) chests.push(chest(Math.round(width * 0.6), i % 3 === 0 ? "firstaid" : "food"));
+  return { name, width, platforms, enemies, chests };
+}
+
+const FOREST_SCENES: SceneDef[] = Array.from({ length: 10 }, (_, i) => forestScene(i));
+
+
 export const LEVELS: LevelDef[] = [
   {
     name: "Level 1 — Sunny Forest",
