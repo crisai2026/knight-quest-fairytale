@@ -1515,6 +1515,7 @@ function updateParticles(state: GameState) {
 }
 
 function updateCamera(state: GameState) {
+  if (state.topDown) return;
   const target = state.player.x - CANVAS_WIDTH / 3;
   state.cameraX += (target - state.cameraX) * 0.1;
   state.cameraX = clamp(state.cameraX, 0, Math.max(0, state.worldWidth - CANVAS_WIDTH));
@@ -3552,7 +3553,9 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "#ffffff";
   ctx.font = "13px sans-serif";
   ctx.fillText(
-    state.swim
+    state.topDown
+      ? "Arrows/WASD: walk any direction • Shift: run • E: talk, shop, map board, portal"
+      : state.swim
       ? "A/D: swim • W/Space: rise • S: dive • R: sword/bow • F: attack • E: chests"
       : "A/D: walk • Shift: sprint • Space: jump • R: sword/bow • F: attack • E: interact, TNT pail",
     12,
