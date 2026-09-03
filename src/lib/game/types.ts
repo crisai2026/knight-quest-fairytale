@@ -73,6 +73,9 @@ export type GameState = {
   mode: GameMode;
   scene: Scene;
   cameraX: number;
+  cameraY: number;
+  /** The village hub plays as a top-down map instead of a platformer. */
+  topDown: boolean;
   levelIndex: number;
   levelName: string;
   /** Scene within the current chapter (0-based). */
@@ -171,6 +174,8 @@ export type Npc = {
   kind: NpcKind;
   name: string;
   x: number;
+  /** Top-down village position (feet). */
+  y: number;
   color: string;
   lines: string[];
   /** Mini-game this villager runs. */
@@ -186,6 +191,10 @@ export type Player = {
   vx: number;
   vy: number;
   facing: "left" | "right";
+  /** Facing for the top-down village. */
+  facing4: "up" | "down" | "left" | "right";
+  /** Walk animation clock used by the top-down village. */
+  walkT: number;
   health: number;
   maxHealth: number;
   hunger: number;
