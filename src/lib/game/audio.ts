@@ -156,10 +156,11 @@ export const sfx = {
       delay: notes.length * 0.15,
     });
   },
-  /** Soft paper rustle as the storybook turns a page. */
+  /** Gentle harp pluck as the storybook turns a page. */
   pageTurn() {
-    noise(0.28, "highpass", 1800, 0.14, 0, 4000);
-    noise(0.18, "bandpass", 2600, 0.08, 0.12);
+    tone({ type: "triangle", from: 784, duration: 0.5, volume: 0.1 });
+    tone({ type: "sine", from: 1175, duration: 0.4, volume: 0.06, delay: 0.06 });
+    noise(0.14, "lowpass", 900, 0.03, 0.02);
   },
   /** Wizard magic snapping the portal shut. */
   portalSeal() {
@@ -213,7 +214,7 @@ export function playOwlHoot() {
 
 /* ---------------------------------- music --------------------------------- */
 
-export type MusicTrack = "cheery" | "creepy" | "fire" | "rock" | "beautiful" | null;
+export type MusicTrack = "cheery" | "creepy" | "fire" | "rock" | "beautiful" | "storybook" | null;
 
 type TrackDef = {
   stepMs: number;
@@ -264,6 +265,13 @@ const TRACKS: Record<Exclude<MusicTrack, null>, TrackDef> = {
       "E3", "E3", "G3", "E3", "D4", "C4", "B3", "A3",
     ].map(n),
     bass: ["E1", "E1", "E1", "E1", "A1", "A1", "G1", "G1", "E1", "E1", "E1", "E1", "B1", "B1", "C2", "D2"].map(n),
+  },
+  storybook: {
+    stepMs: 460,
+    wave: "sine",
+    gain: 0.12,
+    lead: ["C5", "E5", "G5", "E5", "A4", "C5", "E5", "C5", "F4", "A4", "C5", "A4", "G4", "B4", "D5", "G4"].map(n),
+    bass: ["C3", null, null, null, "A2", null, null, null, "F2", null, null, null, "G2", null, null, null].map(n),
   },
   beautiful: {
     stepMs: 340,

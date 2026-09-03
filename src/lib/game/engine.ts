@@ -1627,7 +1627,13 @@ function updateCamera(state: GameState) {
 
 /* ---------------- Cutscenes ---------------- */
 
+/** How many opening pages tell the village's own story before the dragon arrives. */
+const VILLAGE_PAGES = 3;
+
 const INTRO_LINES = [
+  "Long ago, in a green valley, the little village of Willowbrook was built around an old stone well.",
+  "Its people were bakers, farmers and tailors, and their kind Mayor Bumbleworth kept the peace.",
+  "The princess loved the village, and a young knight guarded its gate — nothing bad ever happened here.",
   "A quiet morning in the village...",
   "A shadow falls: the Dragon lands, and beside him stands Zarvok the Wizard.",
   "Dragon: \"Minions! Take the princess to my castle!\"",
@@ -1641,7 +1647,7 @@ function updateIntro(state: GameState) {
   const phase = Math.floor(state.cutsceneTimer / 190);
   if (phase !== state.cutscenePhase) {
     sfx.pageTurn();
-    if (phase === 4) sfx.portalSeal();
+    if (phase === VILLAGE_PAGES + 4) sfx.portalSeal();
   }
   state.cutscenePhase = phase;
   if (state.cutscenePhase >= INTRO_LINES.length) endIntro(state);
@@ -1673,7 +1679,7 @@ function updateCutscene(state: GameState) {
 function musicForState(state: GameState): MusicTrack {
   if (!state.started) return null;
   if (state.mode === "gameover") return null;
-  if (state.mode === "intro") return "creepy";
+  if (state.mode === "intro") return "storybook";
   if (state.mode === "won" || (state.cage?.open ?? false)) return "beautiful";
   if (state.boss) return "rock";
   if (state.biome === "night" || state.biome === "dark" || state.biome === "mountain") return "creepy";
@@ -3334,8 +3340,9 @@ function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
 }
 
 function drawIntroScene(ctx: CanvasRenderingContext2D, state: GameState) {
-  const phase = state.cutscenePhase;
-  const t = state.cutsceneTimer;
+  // The first pages tell the village's story; the dragon scene starts after them.
+  const phase = Math.max(0, state.cutscenePhase - VILLAGE_PAGES);
+  const t = state.cutsceneTimer - VILLAGE_PAGES * 190;
 
   const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
   grad.addColorStop(0, phase === 0 ? "#7dd3fc" : "#450a0a");
@@ -3346,6 +3353,35 @@ function drawIntroScene(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "#57534e";
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
   for (let i = 0; i < 4; i++) drawHouse(ctx, 60 + i * 200);
+
+  if (state.cutscenePhase < VILLAGE_PAGES) {
+    // Peaceful village: the old stone well and its people going about their day.
+    ctx.fillStyle = "#78716c";
+    ctx.fillRect(600, GROUND_Y - 40, 70, 40);
+    ctx.fillStyle = "#44403c";
+    ctx.fillRect(596, GROUND_Y - 46, 78, 8);
+    ctx.fillStyle = "#7f1d1d";
+    ctx.fillRect(592, GROUND_Y - 92, 86, 12);
+    ctx.fillStyle = "#57534e";
+    ctx.fillRect(604, GROUND_Y - 88, 6, 44);
+    ctx.fillRect(660, GROUND_Y - 88, 6, 44);
+    const folk: [number, string][] = [
+      [200, "#f59e0b"],
+      [330, "#38bdf8"],
+      [470, "#a3e635"],
+      [760, "#f472b6"],
+    ];
+    folk.forEach(([x, color], i) => {
+      const bob = Math.sin(state.cutsceneTimer * 0.05 + i) * 3;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, GROUND_Y - 44 + bob, 22, 44);
+      ctx.fillStyle = "#fcd7b6";
+      ctx.beginPath();
+      ctx.arc(x + 11, GROUND_Y - 54 + bob, 11, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
 
   // The portal the monsters march the princess into.
   const portalX = 700;
