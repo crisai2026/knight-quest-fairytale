@@ -21,15 +21,26 @@ import {
   GROUND_Y,
   FINAL_LEVEL_INDEX,
   VILLAGE_NPCS,
-  VILLAGE_WIDTH,
-  VILLAGE_PLATFORMS,
   SHOP_ITEMS,
-  MAP_BOARD_X,
-  PORTAL_X,
   type EnemySpawn,
   type LevelDef,
 } from "./levels";
 import { BOSSES, createBoss } from "./bosses";
+import {
+  VILLAGE_W,
+  VILLAGE_H,
+  VILLAGE_SPAWN,
+  BOARD_POS,
+  PORTAL_POS,
+  villageSolids,
+  drawVillageGround,
+  drawVillageProps,
+  drawKnightTopDown,
+  drawVillagerTopDown,
+  drawBoardTopDown,
+  drawPortalTopDown,
+  type Rect,
+} from "./village";
 import { createMinigame, drawMinigame, updateMinigame } from "./minigames";
 import { sfx, playMusic, type MusicTrack } from "./audio";
 
@@ -158,6 +169,8 @@ function createPlayer(progress: Progress): Player {
     vx: 0,
     vy: 0,
     facing: "right",
+    facing4: "down",
+    walkT: 0,
     health: progress.maxHealth,
     maxHealth: progress.maxHealth,
     hunger: 5,
@@ -200,6 +213,8 @@ function baseState(carry: Player, progress: Progress): GameState {
     mode: "playing",
     scene: "level",
     cameraX: 0,
+    cameraY: 0,
+    topDown: false,
     levelIndex: 0,
     levelName: "",
     sceneIndex: 0,
@@ -333,17 +348,19 @@ export function loadVillage(carry: Player, progress: Progress): GameState {
   refreshPlayer(player);
   player.health = player.maxHealth;
   player.hunger = player.maxHunger;
-  player.x = 120;
+  player.x = VILLAGE_SPAWN.x - PLAYER_WIDTH / 2;
+  player.y = VILLAGE_SPAWN.y - PLAYER_HEIGHT;
+  player.vx = 0;
+  player.vy = 0;
+  player.facing4 = "up";
 
   const state = baseState(player, progress);
   state.scene = "village";
+  state.topDown = true;
   state.levelName = "The Village";
-  state.worldWidth = VILLAGE_WIDTH;
+  state.worldWidth = VILLAGE_W;
   state.biome = "village";
-  state.platforms = [
-    { x: 0, y: GROUND_Y, width: VILLAGE_WIDTH, height: 80 },
-    ...VILLAGE_PLATFORMS.map((p) => ({ ...p })),
-  ];
+  state.platforms = [];
   state.npcs = VILLAGE_NPCS.map((npc: Npc) => ({ ...npc }));
   state.levelBanner = 160;
   return state;
