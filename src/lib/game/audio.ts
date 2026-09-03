@@ -214,7 +214,7 @@ export function playOwlHoot() {
 
 /* ---------------------------------- music --------------------------------- */
 
-export type MusicTrack = "cheery" | "creepy" | "fire" | "rock" | "beautiful" | null;
+export type MusicTrack = "cheery" | "creepy" | "fire" | "rock" | "beautiful" | "storybook" | null;
 
 type TrackDef = {
   stepMs: number;
