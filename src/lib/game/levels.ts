@@ -262,12 +262,41 @@ export const LEVELS: LevelDef[] = [
   },
 ];
 
+/**
+ * The knight's jump clears about 120px, so no platform may sit more than
+ * MAX_RISE above the ground or above a nearby lower platform. Level layouts are
+ * passed through this pass so every platform is reachable by a normal jump.
+ */
+const MAX_RISE = 80;
+const REACH_GAP = 220;
+
+function makeReachable(list: Platform[]): Platform[] {
+  const sorted = list.map((p) => ({ ...p })).sort((a, b) => a.x - b.x);
+  for (let i = 0; i < sorted.length; i++) {
+    const p = sorted[i]!;
+    let support = GROUND_Y;
+    for (let j = 0; j < i; j++) {
+      const q = sorted[j]!;
+      const gap = p.x - (q.x + q.width);
+      if (gap < REACH_GAP && q.y < support) support = q.y;
+    }
+    const highest = support - MAX_RISE;
+    if (p.y < highest) p.y = highest;
+  }
+  return sorted;
+}
+
+for (const level of LEVELS) {
+  level.platforms = makeReachable(level.platforms);
+  for (const scene of level.scenes ?? []) scene.platforms = makeReachable(scene.platforms);
+}
+
 export const FINAL_LEVEL_INDEX = LEVELS.length - 1;
 
 /* ---------------- Village hub ---------------- */
 
 export const VILLAGE_WIDTH = 2800;
-export const VILLAGE_PLATFORMS: Platform[] = [plat(520, 400, 140), plat(1500, 380, 140)];
+export const VILLAGE_PLATFORMS: Platform[] = makeReachable([plat(520, 400, 140), plat(1500, 380, 140)]);
 export const MAP_BOARD_X = 380;
 export const PORTAL_X = 2500;
 

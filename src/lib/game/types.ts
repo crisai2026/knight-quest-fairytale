@@ -101,6 +101,12 @@ export type GameState = {
   tntList: TNT[];
   keyDrop: KeyDrop | null;
   flagDrop: FlagDrop | null;
+  /** Frames into the Mario-style flag celebration (0 = not celebrating). */
+  celebrateTimer: number;
+  /** Celebration is for a chapter-ending boss flag. */
+  celebrateBig: boolean;
+  /** What happens once the celebration finishes. */
+  celebrateNext: "scene" | "chapter" | null;
   cage: Cage | null;
   message: string;
   messageTimer: number;

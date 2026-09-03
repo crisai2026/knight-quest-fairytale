@@ -139,6 +139,34 @@ export const sfx = {
     tone({ type: "triangle", from: 784, duration: 0.16, volume: 0.18, delay: 0.24 });
     tone({ type: "triangle", from: 1047, duration: 0.35, volume: 0.2, delay: 0.36 });
   },
+  /** Mario-style level-clear fanfare played while the knight celebrates. */
+  victoryFanfare(big = false) {
+    const notes = big
+      ? [523, 659, 784, 1047, 880, 1047, 1319]
+      : [523, 659, 784, 1047, 784, 1047];
+    notes.forEach((n, i) => {
+      tone({ type: "square", from: n, duration: 0.16, volume: 0.16, delay: i * 0.15 });
+      tone({ type: "triangle", from: n / 2, duration: 0.16, volume: 0.12, delay: i * 0.15 });
+    });
+    tone({
+      type: "triangle",
+      from: big ? 1568 : 1319,
+      duration: 0.7,
+      volume: 0.2,
+      delay: notes.length * 0.15,
+    });
+  },
+  /** Soft paper rustle as the storybook turns a page. */
+  pageTurn() {
+    noise(0.28, "highpass", 1800, 0.14, 0, 4000);
+    noise(0.18, "bandpass", 2600, 0.08, 0.12);
+  },
+  /** Wizard magic snapping the portal shut. */
+  portalSeal() {
+    tone({ type: "sawtooth", from: 900, to: 120, duration: 0.5, volume: 0.2 });
+    tone({ type: "square", from: 300, to: 80, duration: 0.4, volume: 0.14, delay: 0.1 });
+    noise(0.4, "lowpass", 600, 0.2, 0.05);
+  },
   hurt() {
     tone({ type: "square", from: 320, to: 120, duration: 0.2, volume: 0.2 });
   },
