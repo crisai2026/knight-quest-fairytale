@@ -1627,7 +1627,13 @@ function updateCamera(state: GameState) {
 
 /* ---------------- Cutscenes ---------------- */
 
+/** How many opening pages tell the village's own story before the dragon arrives. */
+const VILLAGE_PAGES = 3;
+
 const INTRO_LINES = [
+  "Long ago, in a green valley, the little village of Willowbrook was built around an old stone well.",
+  "Its people were bakers, farmers and tailors, and their kind Mayor Bumbleworth kept the peace.",
+  "The princess loved the village, and a young knight guarded its gate — nothing bad ever happened here.",
   "A quiet morning in the village...",
   "A shadow falls: the Dragon lands, and beside him stands Zarvok the Wizard.",
   "Dragon: \"Minions! Take the princess to my castle!\"",
