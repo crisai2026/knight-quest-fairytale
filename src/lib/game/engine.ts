@@ -410,7 +410,10 @@ export function sceneCountOf(levelIndex: number) {
 
 /** Scenes the player may pick on the map for this chapter. */
 function unlockedScenes(state: GameState, levelIndex: number) {
-  return Math.min(sceneCountOf(levelIndex), (state.sceneProgress[levelIndex] ?? 0) + 1);
+  const total = sceneCountOf(levelIndex);
+  // Chapters already beaten (older saves included) have every scene open.
+  if (state.unlockedLevels > levelIndex + 1) return total;
+  return Math.min(total, (state.sceneProgress[levelIndex] ?? 0) + 1);
 }
 
 /** Move on to the next scene of the current chapter, keeping the knight's stats. */
@@ -1287,6 +1290,7 @@ function updateCelebration(state: GameState) {
   markSceneCleared(state, state.levelIndex, state.sceneIndex);
   state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
   state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
+  state.selectedScene = 0;
   saveProgress(state);
   state.mode = "levelcomplete";
   state.levelCompleteTimer = 0;
