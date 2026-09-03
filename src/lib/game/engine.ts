@@ -2188,14 +2188,27 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     fire: ["#450a0a", "#b45309"],
     castle: ["#1e1b4b", "#312e81"],
   };
-  gradient.addColorStop(0, stops[b][0]);
-  gradient.addColorStop(1, stops[b][1]);
+  // A scene can override the biome sky with its own time of day / weather.
+  const skyStops: Record<Exclude<SceneSky, "clear">, [string, string]> = {
+    dawn: ["#fda4af", "#fef3c7"],
+    mist: ["#cbd5e1", "#e2e8f0"],
+    rain: ["#64748b", "#94a3b8"],
+    grey: ["#94a3b8", "#d1d5db"],
+    golden: ["#38bdf8", "#fde68a"],
+    dusk: ["#4c1d95", "#f59e0b"],
+    storm: ["#1e293b", "#475569"],
+    sunset: ["#f97316", "#fcd34d"],
+  };
+  const pair = state.sky !== "clear" && state.scene === "level" ? skyStops[state.sky] : stops[b];
+  gradient.addColorStop(0, pair[0]);
+  gradient.addColorStop(1, pair[1]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   const now = Date.now();
+  const overcast = state.sky === "rain" || state.sky === "storm" || state.sky === "grey" || state.sky === "mist";
 
-  if (b === "sunny" || b === "beach" || b === "village" || b === "sky" || b === "jungle") {
+  if (!overcast && (b === "sunny" || b === "beach" || b === "village" || b === "sky" || b === "jungle")) {
     ctx.fillStyle = "#fde047";
     ctx.beginPath();
     ctx.arc(680, 90, 44, 0, Math.PI * 2);
