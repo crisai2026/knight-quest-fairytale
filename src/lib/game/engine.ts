@@ -21,15 +21,26 @@ import {
   GROUND_Y,
   FINAL_LEVEL_INDEX,
   VILLAGE_NPCS,
-  VILLAGE_WIDTH,
-  VILLAGE_PLATFORMS,
   SHOP_ITEMS,
-  MAP_BOARD_X,
-  PORTAL_X,
   type EnemySpawn,
   type LevelDef,
 } from "./levels";
 import { BOSSES, createBoss } from "./bosses";
+import {
+  VILLAGE_W,
+  VILLAGE_H,
+  VILLAGE_SPAWN,
+  BOARD_POS,
+  PORTAL_POS,
+  villageSolids,
+  drawVillageGround,
+  drawVillageProps,
+  drawKnightTopDown,
+  drawVillagerTopDown,
+  drawBoardTopDown,
+  drawPortalTopDown,
+  type Rect,
+} from "./village";
 import { createMinigame, drawMinigame, updateMinigame } from "./minigames";
 import { sfx, playMusic, type MusicTrack } from "./audio";
 
@@ -158,6 +169,8 @@ function createPlayer(progress: Progress): Player {
     vx: 0,
     vy: 0,
     facing: "right",
+    facing4: "down",
+    walkT: 0,
     health: progress.maxHealth,
     maxHealth: progress.maxHealth,
     hunger: 5,
@@ -200,6 +213,8 @@ function baseState(carry: Player, progress: Progress): GameState {
     mode: "playing",
     scene: "level",
     cameraX: 0,
+    cameraY: 0,
+    topDown: false,
     levelIndex: 0,
     levelName: "",
     sceneIndex: 0,
@@ -333,17 +348,19 @@ export function loadVillage(carry: Player, progress: Progress): GameState {
   refreshPlayer(player);
   player.health = player.maxHealth;
   player.hunger = player.maxHunger;
-  player.x = 120;
+  player.x = VILLAGE_SPAWN.x - PLAYER_WIDTH / 2;
+  player.y = VILLAGE_SPAWN.y - PLAYER_HEIGHT;
+  player.vx = 0;
+  player.vy = 0;
+  player.facing4 = "up";
 
   const state = baseState(player, progress);
   state.scene = "village";
+  state.topDown = true;
   state.levelName = "The Village";
-  state.worldWidth = VILLAGE_WIDTH;
+  state.worldWidth = VILLAGE_W;
   state.biome = "village";
-  state.platforms = [
-    { x: 0, y: GROUND_Y, width: VILLAGE_WIDTH, height: 80 },
-    ...VILLAGE_PLATFORMS.map((p) => ({ ...p })),
-  ];
+  state.platforms = [];
   state.npcs = VILLAGE_NPCS.map((npc: Npc) => ({ ...npc }));
   state.levelBanner = 160;
   return state;
@@ -489,6 +506,11 @@ function updatePlayer(state: GameState) {
   const keys = state.keys;
   const swim = state.swim;
 
+  if (state.topDown) {
+    updateVillage(state);
+    return;
+  }
+
   const moveLeft = keys["a"] || keys["arrowleft"];
   const moveRight = keys["d"] || keys["arrowright"];
 
@@ -592,11 +614,6 @@ function updatePlayer(state: GameState) {
   if (p.invulnerable > 0) p.invulnerable--;
   if (state.biomeLabelTimer > 0) state.biomeLabelTimer--;
 
-  if (state.scene === "village") {
-    updateVillage(state);
-    return;
-  }
-
   // Boss trigger near the end of the level
   const level = LEVELS[state.levelIndex]!;
   const arenaX = state.bossArenaX;
@@ -615,12 +632,18 @@ function updatePlayer(state: GameState) {
 
 /* ---------------- Village hub ---------------- */
 
+/** Feet position of the knight in the top-down village. */
+function feet(p: Player) {
+  return { x: p.x + p.width / 2, y: p.y + p.height };
+}
+
 function nearestNpc(state: GameState): Npc | null {
   const p = state.player;
+  const f = feet(p);
   let best: Npc | null = null;
-  let bestDist = 80;
+  let bestDist = 78;
   for (const npc of state.npcs) {
-    const d = Math.abs(p.x + p.width / 2 - npc.x);
+    const d = Math.hypot(f.x - npc.x, f.y - npc.y);
     if (d < bestDist) {
       best = npc;
       bestDist = d;
@@ -629,12 +652,82 @@ function nearestNpc(state: GameState): Npc | null {
   return best;
 }
 
+const VILLAGE_SOLIDS: Rect[] = villageSolids();
+
+function overlaps(x: number, y: number, w: number, h: number, r: Rect) {
+  return x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y;
+}
+
+/** 8-way movement with per-axis collision against the town's solid rects. */
+function moveTopDown(state: GameState) {
+  const p = state.player;
+  const keys = state.keys;
+  const sprinting = keys["shift"] && p.hunger > 0;
+  const speed = sprinting ? SPRINT_SPEED * 0.8 : WALK_SPEED;
+
+  let dx = 0;
+  let dy = 0;
+  if (keys["a"] || keys["arrowleft"]) dx -= 1;
+  if (keys["d"] || keys["arrowright"]) dx += 1;
+  if (keys["w"] || keys["arrowup"]) dy -= 1;
+  if (keys["s"] || keys["arrowdown"]) dy += 1;
+
+  if (dx !== 0 && dy !== 0) {
+    dx *= Math.SQRT1_2;
+    dy *= Math.SQRT1_2;
+  }
+
+  if (dx !== 0 || dy !== 0) {
+    p.walkT += 0.25;
+    if (Math.abs(dx) >= Math.abs(dy)) p.facing4 = dx < 0 ? "left" : "right";
+    else p.facing4 = dy < 0 ? "up" : "down";
+    if (dx < 0) p.facing = "left";
+    else if (dx > 0) p.facing = "right";
+    if (sprinting) {
+      p.hunger = Math.max(0, p.hunger - 0.008);
+      if (p.hunger <= 0) showMessage(state, "Too hungry to sprint!");
+    }
+  }
+
+  // Collision box: the knight's feet only, so he can walk in front of walls.
+  const bw = p.width - 6;
+  const bh = 18;
+  const bx = () => p.x + 3;
+  const by = () => p.y + p.height - bh;
+
+  p.x += dx * speed;
+  for (const r of VILLAGE_SOLIDS) {
+    if (!overlaps(bx(), by(), bw, bh, r)) continue;
+    p.x = dx > 0 ? r.x - bw - 3 : r.x + r.w - 3;
+  }
+
+  p.y += dy * speed;
+  for (const r of VILLAGE_SOLIDS) {
+    if (!overlaps(bx(), by(), bw, bh, r)) continue;
+    p.y = dy > 0 ? r.y - p.height : r.y + r.h - p.height + bh;
+  }
+
+  p.x = clamp(p.x, 0, VILLAGE_W - p.width);
+  p.y = clamp(p.y, 0, VILLAGE_H - p.height);
+  p.vx = 0;
+  p.vy = 0;
+  p.onGround = true;
+
+  // Camera follows in both axes.
+  state.cameraX += (p.x + p.width / 2 - CANVAS_WIDTH / 2 - state.cameraX) * 0.12;
+  state.cameraY += (p.y + p.height / 2 - CANVAS_HEIGHT / 2 - state.cameraY) * 0.12;
+  state.cameraX = clamp(state.cameraX, 0, VILLAGE_W - CANVAS_WIDTH);
+  state.cameraY = clamp(state.cameraY, 0, VILLAGE_H - CANVAS_HEIGHT);
+}
+
 function updateVillage(state: GameState) {
   const p = state.player;
-  const cx = p.x + p.width / 2;
+  moveTopDown(state);
+  if (state.mode !== "playing") return;
+  const f = feet(p);
 
   // World map board
-  if (Math.abs(cx - MAP_BOARD_X) < 70) {
+  if (Math.hypot(f.x - BOARD_POS.x, f.y - BOARD_POS.y) < 90) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
       state.mode = "map";
@@ -647,7 +740,7 @@ function updateVillage(state: GameState) {
   }
 
   // Portal
-  if (Math.abs(cx - PORTAL_X) < 80) {
+  if (Math.hypot(f.x - PORTAL_POS.x, f.y - PORTAL_POS.y) < 100) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
       state.pendingLevel = state.selectedLevel;
@@ -657,6 +750,7 @@ function updateVillage(state: GameState) {
     }
     showMessage(state, `Press E to enter the ${sceneLabel(state.selectedLevel, state.selectedScene)} portal`, 20);
   }
+
 
   const npc = nearestNpc(state);
   if (!npc || !state.keys["e"]) return;
@@ -1421,6 +1515,7 @@ function updateParticles(state: GameState) {
 }
 
 function updateCamera(state: GameState) {
+  if (state.topDown) return;
   const target = state.player.x - CANVAS_WIDTH / 3;
   state.cameraX += (target - state.cameraX) * 0.1;
   state.cameraX = clamp(state.cameraX, 0, Math.max(0, state.worldWidth - CANVAS_WIDTH));
@@ -2690,105 +2785,71 @@ function drawCoins(ctx: CanvasRenderingContext2D, state: GameState) {
   }
 }
 
-function drawNpc(ctx: CanvasRenderingContext2D, npc: Npc, cameraX: number, active: boolean) {
-  const x = npc.x - cameraX;
-  if (x < -60 || x > CANVAS_WIDTH + 60) return;
-  const y = GROUND_Y - 46;
-  ctx.fillStyle = npc.color;
-  ctx.fillRect(x - 12, y + 14, 24, 32);
-  ctx.fillStyle = "#fcd7b6";
-  ctx.beginPath();
-  ctx.arc(x, y + 6, 11, 0, Math.PI * 2);
-  ctx.fill();
-  if (npc.kind === "mayor") {
-    ctx.fillStyle = "#facc15";
-    ctx.fillRect(x - 12, y - 8, 24, 6);
-    ctx.fillRect(x - 6, y - 14, 12, 8);
-  } else if (npc.kind === "shop") {
-    ctx.fillStyle = "#f8fafc";
-    ctx.fillRect(x - 26, y - 34, 52, 18);
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 11px sans-serif";
-    ctx.fillText("SHOP", x - 16, y - 21);
-  }
-  ctx.fillStyle = "#0f172a";
-  ctx.fillRect(x - 5, y + 4, 3, 3);
-  ctx.fillRect(x + 3, y + 4, 3, 3);
+const PORTAL_COLORS: Record<Biome, string> = {
+  sunny: "#4ade80",
+  night: "#4338ca",
+  beach: "#f59e0b",
+  ocean: "#06b6d4",
+  sky: "#38bdf8",
+  jungle: "#16a34a",
+  snow: "#e0f2fe",
+  desert: "#fbbf24",
+  mountain: "#94a3b8",
+  village: "#a3a3a3",
+  dark: "#1e293b",
+  fire: "#f97316",
+  castle: "#7c3aed",
+};
 
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "11px sans-serif";
-  ctx.fillText(npc.name, x - ctx.measureText(npc.name).width / 2, y - 40);
+/** Whole top-down village: ground, then depth-sorted props, NPCs and the knight. */
+function drawVillageTopDown(ctx: CanvasRenderingContext2D, state: GameState) {
+  const { cameraX: camX, cameraY: camY } = state;
+  drawVillageGround(ctx, camX, camY);
 
-  if (active) {
-    ctx.fillStyle = "#b45309";
-    ctx.font = "bold 13px sans-serif";
-    ctx.fillText("Press E", x - 22, y - 56);
-  }
-}
-
-function drawMapBoard(ctx: CanvasRenderingContext2D, state: GameState) {
-  const x = MAP_BOARD_X - state.cameraX;
-  if (x < -120 || x > CANVAS_WIDTH + 120) return;
-  ctx.fillStyle = "#78350f";
-  ctx.fillRect(x - 6, GROUND_Y - 70, 12, 70);
-  ctx.fillRect(x - 60, GROUND_Y - 70, 12, 70);
-  ctx.fillRect(x + 48, GROUND_Y - 70, 12, 70);
-  ctx.fillStyle = "#fef3c7";
-  ctx.fillRect(x - 70, GROUND_Y - 160, 140, 96);
-  ctx.strokeStyle = "#78350f";
-  ctx.lineWidth = 5;
-  ctx.strokeRect(x - 70, GROUND_Y - 160, 140, 96);
-  ctx.fillStyle = "#78350f";
-  ctx.font = "bold 14px sans-serif";
-  ctx.fillText("WORLD MAP", x - 46, GROUND_Y - 136);
-  ctx.font = "12px sans-serif";
-  ctx.fillText(`${state.unlockedLevels}/10 unlocked`, x - 42, GROUND_Y - 112);
-  ctx.fillText("Press E", x - 24, GROUND_Y - 86);
-}
-
-function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
-  const x = PORTAL_X - state.cameraX;
-  if (x < -160 || x > CANVAS_WIDTH + 160) return;
+  const p = state.player;
+  const f = feet(p);
+  const talk = state.mode === "playing" ? nearestNpc(state) : null;
   const level = LEVELS[state.selectedLevel]!;
-  const themeColors: Record<Biome, string> = {
-    sunny: "#4ade80",
-    night: "#4338ca",
-    beach: "#f59e0b",
-    ocean: "#06b6d4",
-    sky: "#38bdf8",
-    jungle: "#16a34a",
-    snow: "#e0f2fe",
-    desert: "#fbbf24",
-    mountain: "#94a3b8",
-    village: "#a3a3a3",
-    dark: "#1e293b",
-    fire: "#f97316",
-    castle: "#7c3aed",
-  };
-  const color = themeColors[level.biome];
-  const t = Date.now() / 400;
-  const cy = GROUND_Y - 90;
-
-  ctx.fillStyle = "#334155";
-  ctx.fillRect(x - 74, GROUND_Y - 180, 16, 180);
-  ctx.fillRect(x + 58, GROUND_Y - 180, 16, 180);
-  ctx.fillRect(x - 74, GROUND_Y - 196, 148, 18);
-
-  for (let i = 4; i >= 0; i--) {
-    ctx.globalAlpha = 0.25 + i * 0.12;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, cy, 54 - i * 6 + Math.sin(t + i) * 3, 84 - i * 10 + Math.cos(t + i) * 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  drawBossFace(ctx, level.boss, x, cy, 26);
-
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 13px sans-serif";
   const label = sceneLabel(state.selectedLevel, state.selectedScene);
-  ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
+  const nearBoard = Math.hypot(f.x - BOARD_POS.x, f.y - BOARD_POS.y) < 90;
+  const nearPortal = Math.hypot(f.x - PORTAL_POS.x, f.y - PORTAL_POS.y) < 100;
+
+  const extras = [
+    {
+      y: BOARD_POS.y,
+      draw: (c: CanvasRenderingContext2D) => drawBoardTopDown(c, state.unlockedLevels, nearBoard),
+    },
+    {
+      y: PORTAL_POS.y,
+      draw: (c: CanvasRenderingContext2D) =>
+        drawPortalTopDown(
+          c,
+          PORTAL_COLORS[level.biome],
+          label,
+          (cc, x, y, size) => drawBossFace(cc, level.boss, x, y, size),
+          nearPortal
+        ),
+    },
+    ...state.npcs.map((npc) => ({
+      y: npc.y,
+      draw: (c: CanvasRenderingContext2D) =>
+        drawVillagerTopDown(
+          c,
+          npc.x,
+          npc.y,
+          npc.color,
+          npc.name,
+          npc === talk,
+          npc.kind === "mayor" ? ("mayor" as const) : npc.kind === "shop" ? ("shop" as const) : undefined
+        ),
+    })),
+    {
+      y: f.y,
+      draw: (c: CanvasRenderingContext2D) => drawKnightTopDown(c, f.x, f.y, p.facing4, p.walkT),
+    },
+  ];
+
+  drawVillageProps(ctx, camX, camY, extras);
 }
 
 /** Throwaway enemy record so the intro can reuse the real monster art. */
@@ -3453,48 +3514,48 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     return;
   }
 
-  drawBackground(ctx, state);
-  drawGroundStrip(ctx, state);
+  if (state.topDown) {
+    drawVillageTopDown(ctx, state);
+  } else {
+    drawBackground(ctx, state);
+    drawGroundStrip(ctx, state);
 
-  if (state.scene === "village") {
-    drawMapBoard(ctx, state);
-    drawPortal(ctx, state);
+    for (const platform of state.platforms) {
+      if (platform.y === GROUND_Y) continue;
+      if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
+      drawPlatform(ctx, platform, state.cameraX, state.biome);
+    }
+
+    for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
+    for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
+    for (const e of state.enemies) drawEnemy(ctx, e, state.cameraX);
+
+    drawCage(ctx, state);
+    drawKeyDrop(ctx, state);
+    drawFlagDrop(ctx, state);
+    drawCoins(ctx, state);
+    drawFoods(ctx, state);
+
+    if (state.boss) drawBoss(ctx, state.boss, state.cameraX);
+
+    drawPlayer(ctx, state.player, state.cameraX);
+
+    for (const t of state.tntList) drawTNT(ctx, t, state.cameraX);
+    for (const a of state.arrows) drawArrow(ctx, a, state.cameraX);
+
+    drawParticles(ctx, state);
   }
 
-  for (const platform of state.platforms) {
-    if (platform.y === GROUND_Y) continue;
-    if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
-    drawPlatform(ctx, platform, state.cameraX, state.biome);
-  }
 
-  for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
-  for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
-  for (const e of state.enemies) drawEnemy(ctx, e, state.cameraX);
-
-  drawCage(ctx, state);
-  drawKeyDrop(ctx, state);
-  drawFlagDrop(ctx, state);
-  drawCoins(ctx, state);
-  drawFoods(ctx, state);
-
-  const talkTarget = state.npcs.length ? nearestNpc(state) : null;
-  for (const npc of state.npcs) drawNpc(ctx, npc, state.cameraX, npc === talkTarget && state.mode === "playing");
-
-  if (state.boss) drawBoss(ctx, state.boss, state.cameraX);
-
-  drawPlayer(ctx, state.player, state.cameraX);
-
-  for (const t of state.tntList) drawTNT(ctx, t, state.cameraX);
-  for (const a of state.arrows) drawArrow(ctx, a, state.cameraX);
-
-  drawParticles(ctx, state);
 
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(0, CANVAS_HEIGHT - 30, CANVAS_WIDTH, 30);
   ctx.fillStyle = "#ffffff";
   ctx.font = "13px sans-serif";
   ctx.fillText(
-    state.swim
+    state.topDown
+      ? "Arrows/WASD: walk any direction • Shift: run • E: talk, shop, map board, portal"
+      : state.swim
       ? "A/D: swim • W/Space: rise • S: dive • R: sword/bow • F: attack • E: chests"
       : "A/D: walk • Shift: sprint • Space: jump • R: sword/bow • F: attack • E: interact, TNT pail",
     12,

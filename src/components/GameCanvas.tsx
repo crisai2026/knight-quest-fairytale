@@ -332,13 +332,18 @@ export function GameCanvas() {
           style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
         >
           <div className="pointer-events-auto flex items-end gap-2 opacity-60">
-            <TouchButton keyName="a" label="←" className="h-14 w-14" />
-            <TouchButton keyName="d" label="→" className="h-14 w-14" />
+            <div className="grid grid-cols-3 grid-rows-2 gap-1">
+              <div />
+              <TouchButton keyName="w" label="↑" className="h-12 w-12" />
+              <div />
+              <TouchButton keyName="a" label="←" className="h-12 w-12" />
+              <TouchButton keyName="s" label="↓" className="h-12 w-12" />
+              <TouchButton keyName="d" label="→" className="h-12 w-12" />
+            </div>
             <TouchButton keyName="shift" label="Run" className="h-11 w-11 text-[11px]" />
           </div>
           <div className="pointer-events-auto flex items-end gap-2 opacity-60">
             <TouchButton keyName="r" label="R" className="h-11 w-11 text-sm" />
-            <TouchButton keyName="s" label="↓" className="h-11 w-11 text-sm" />
             <TouchButton keyName="e" label="E" className="h-14 w-14" />
             <TouchButton keyName="f" label="F" className="h-14 w-14" />
             <TouchButton keyName=" " label="Jump" className="h-16 w-16 text-[11px]" />
