@@ -266,6 +266,13 @@ const TRACKS: Record<Exclude<MusicTrack, null>, TrackDef> = {
     ].map(n),
     bass: ["E1", "E1", "E1", "E1", "A1", "A1", "G1", "G1", "E1", "E1", "E1", "E1", "B1", "B1", "C2", "D2"].map(n),
   },
+  storybook: {
+    stepMs: 460,
+    wave: "sine",
+    gain: 0.12,
+    lead: ["C5", "E5", "G5", "E5", "A4", "C5", "E5", "C5", "F4", "A4", "C5", "A4", "G4", "B4", "D5", "G4"].map(n),
+    bass: ["C3", null, null, null, "A2", null, null, null, "F2", null, null, null, "G2", null, null, null].map(n),
+  },
   beautiful: {
     stepMs: 340,
     wave: "triangle",
