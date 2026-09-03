@@ -15,6 +15,7 @@ import type {
   FoodKind,
   FoodDrop,
   FlagDrop,
+  SceneSky,
 } from "./types";
 import {
   LEVELS,
