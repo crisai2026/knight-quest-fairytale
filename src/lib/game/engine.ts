@@ -280,6 +280,13 @@ function baseState(carry: Player, progress: Progress): GameState {
     windDir: -1,
     bounces: [],
     sceneHint: "",
+    sky: "clear",
+    slippery: false,
+    fog: false,
+    fallers: [],
+    fallerTimer: 0,
+    timeLimit: 0,
+    timeLeft: 0,
   };
 }
 
