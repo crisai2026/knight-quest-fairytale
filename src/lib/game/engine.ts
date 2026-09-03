@@ -763,6 +763,64 @@ function updatePlayer(state: GameState) {
   }
 }
 
+/** Acorns dropping from the treetops around the knight. */
+function updateFallers(state: GameState) {
+  if (state.fallerTimer <= 0) return;
+  const p = state.player;
+  state.fallerTimer++;
+  if (state.fallerTimer % 34 === 0) {
+    const x = p.x + (Math.random() - 0.5) * 520;
+    state.fallers.push({ x: clamp(x, 20, state.worldWidth - 20), y: -20, vy: 2 + Math.random() * 1.5 });
+  }
+  for (const f of state.fallers) {
+    f.vy = Math.min(9, f.vy + 0.22);
+    f.y += f.vy;
+    const box = { x: f.x - 9, y: f.y - 9, width: 18, height: 18 };
+    if (rectsOverlap(p, box) && p.invulnerable <= 0) {
+      p.health = Math.max(0, p.health - 1);
+      p.invulnerable = 40;
+      p.vy = -3;
+      sfx.hurt();
+      showMessage(state, "An acorn bonked you!", 60);
+      f.y = GROUND_Y + 999;
+    }
+    if (f.y >= GROUND_Y - 4 && f.y < GROUND_Y + 900) {
+      f.y = GROUND_Y + 999;
+      for (let i = 0; i < 4; i++) {
+        state.particles.push({
+          x: f.x,
+          y: GROUND_Y - 4,
+          vx: (Math.random() - 0.5) * 3,
+          vy: -Math.random() * 2,
+          life: 20,
+          maxLife: 20,
+          color: "#a16207",
+          size: 2,
+        });
+      }
+    }
+  }
+  state.fallers = state.fallers.filter((f) => f.y < GROUND_Y + 500);
+}
+
+/** Countdown scenes: run out of time and the knight takes a hit. */
+function updateSceneTimer(state: GameState) {
+  if (state.timeLimit <= 0) return;
+  const p = state.player;
+  if (state.timeLeft > 0) {
+    state.timeLeft--;
+    if (state.timeLeft === 600) showMessage(state, "10 seconds left — run!", 90);
+    return;
+  }
+  if (p.invulnerable <= 0) {
+    p.health = Math.max(0, p.health - 1);
+    p.invulnerable = 90;
+    sfx.hurt();
+    showMessage(state, "Out of time! Night is closing in.", 90);
+    state.timeLeft = 300;
+  }
+}
+
 /* ---------------- Village hub ---------------- */
 
 /** Feet position of the knight in the top-down village. */
