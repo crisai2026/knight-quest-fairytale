@@ -3902,7 +3902,9 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     for (const t of state.tntList) drawTNT(ctx, t, state.cameraX);
     for (const a of state.arrows) drawArrow(ctx, a, state.cameraX);
 
+    drawFallers(ctx, state);
     drawParticles(ctx, state);
+    drawFogOverlay(ctx, state);
   }
 
 
