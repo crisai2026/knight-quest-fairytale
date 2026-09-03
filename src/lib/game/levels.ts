@@ -19,6 +19,12 @@ export type SceneDef = {
   chests: Chest[];
   /** Only the final scene of a chapter has the boss. */
   boss?: boolean;
+  /** Periodic wind gusts push the knight sideways. */
+  wind?: boolean;
+  /** Bouncy mushrooms that launch the knight. */
+  bounces?: { x: number; y: number }[];
+  /** One-line twist hint shown on the scene start card. */
+  hint?: string;
 };
 
 export type LevelDef = {
