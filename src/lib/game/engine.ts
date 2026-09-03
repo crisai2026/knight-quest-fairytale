@@ -1,34 +1,3 @@
-  if (state.mode === "map") {
-    if (state.mapView === "scenes") {
-      const total = sceneCountOf(state.mapChapter);
-      if (key === "a" || key === "arrowleft") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 1);
-      else if (key === "d" || key === "arrowright") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 1);
-      else if (key === "w" || key === "arrowup") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 5);
-      else if (key === "s" || key === "arrowdown") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 5);
-      else if (key === "e" || key === "enter" || key === " ") pickScene(state, state.mapSceneCursor);
-      else if (key === "escape") {
-        state.mapView = "chapters";
-        state.keys["e"] = false;
-      }
-      return;
-    }
-    if (key === "a" || key === "arrowleft") state.mapCursor = Math.max(0, state.mapCursor - 1);
-    else if (key === "d" || key === "arrowright") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 1);
-    else if (key === "w" || key === "arrowup") state.mapCursor = Math.max(0, state.mapCursor - 5);
-    else if (key === "s" || key === "arrowdown") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 5);
-    else if (key === "e" || key === "enter" || key === " ") {
-      if (state.mapCursor < state.unlockedLevels) {
-        state.keys["e"] = false;
-        openChapterScenes(state, state.mapCursor);
-      } else {
-        sfx.deny();
-      }
-    } else if (key === "escape") {
-      state.mode = "playing";
-      state.keys["e"] = false;
-    }
-    return;
-  }
 import type {
   GameState,
   Player,
@@ -1644,17 +1613,27 @@ export function handleKeyDown(state: GameState, key: string) {
     return;
   }
   if (state.mode === "map") {
+    if (state.mapView === "scenes") {
+      const total = sceneCountOf(state.mapChapter);
+      if (key === "a" || key === "arrowleft") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 1);
+      else if (key === "d" || key === "arrowright") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 1);
+      else if (key === "w" || key === "arrowup") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 5);
+      else if (key === "s" || key === "arrowdown") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 5);
+      else if (key === "e" || key === "enter" || key === " ") pickScene(state, state.mapSceneCursor);
+      else if (key === "escape") {
+        state.mapView = "chapters";
+        state.keys["e"] = false;
+      }
+      return;
+    }
     if (key === "a" || key === "arrowleft") state.mapCursor = Math.max(0, state.mapCursor - 1);
     else if (key === "d" || key === "arrowright") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 1);
     else if (key === "w" || key === "arrowup") state.mapCursor = Math.max(0, state.mapCursor - 5);
     else if (key === "s" || key === "arrowdown") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 5);
     else if (key === "e" || key === "enter" || key === " ") {
       if (state.mapCursor < state.unlockedLevels) {
-        state.selectedLevel = state.mapCursor;
-        state.mode = "playing";
         state.keys["e"] = false;
-        sfx.buy();
-        showMessage(state, `Portal set to ${LEVELS[state.selectedLevel]!.short}. Walk right into it!`, 200);
+        openChapterScenes(state, state.mapCursor);
       } else {
         sfx.deny();
       }
