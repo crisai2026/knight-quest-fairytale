@@ -68,6 +68,7 @@ const BIOME_NAMES: Record<Biome, string> = {
 
 type Progress = {
   unlockedLevels: number;
+  sceneProgress: Record<number, number>;
   coins: number;
   maxHealth: number;
   hasBow: boolean;
@@ -76,7 +77,15 @@ type Progress = {
 };
 
 function loadProgress(): Progress {
-  const fallback: Progress = { unlockedLevels: 1, coins: 0, maxHealth: 5, hasBow: true, arrows: 20, bestScores: {} };
+  const fallback: Progress = {
+    unlockedLevels: 1,
+    sceneProgress: {},
+    coins: 0,
+    maxHealth: 5,
+    hasBow: true,
+    arrows: 20,
+    bestScores: {},
+  };
   if (typeof window === "undefined") return fallback;
   try {
     const raw = window.localStorage.getItem(SAVE_KEY);
@@ -92,6 +101,7 @@ function saveProgress(state: GameState) {
   try {
     const data: Progress = {
       unlockedLevels: state.unlockedLevels,
+      sceneProgress: state.sceneProgress,
       coins: state.player.coins,
       maxHealth: state.player.maxHealth,
       hasBow: state.player.hasBow,
@@ -237,6 +247,11 @@ function baseState(carry: Player, progress: Progress): GameState {
     shopMessage: "",
     unlockedLevels: progress.unlockedLevels,
     selectedLevel: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
+    selectedScene: 0,
+    sceneProgress: { ...progress.sceneProgress },
+    mapView: "chapters",
+    mapChapter: 0,
+    mapSceneCursor: 0,
     mapCursor: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
     minigame: null,
     bestScores: progress.bestScores,
@@ -353,6 +368,7 @@ function replaceState(state: GameState, next: GameState) {
 function progressFrom(state: GameState): Progress {
   return {
     unlockedLevels: state.unlockedLevels,
+    sceneProgress: state.sceneProgress,
     coins: state.player.coins,
     maxHealth: state.player.maxHealth,
     hasBow: state.player.hasBow,
@@ -366,9 +382,9 @@ export function goToVillage(state: GameState) {
   replaceState(state, loadVillage(state.player, progressFrom(state)));
 }
 
-export function startLevel(state: GameState, levelIndex: number) {
+export function startLevel(state: GameState, levelIndex: number, sceneIndex = 0) {
   saveProgress(state);
-  replaceState(state, loadLevel(levelIndex, state.player, progressFrom(state)));
+  replaceState(state, loadLevel(levelIndex, state.player, progressFrom(state), sceneIndex));
 }
 
 export function restartLevel(state: GameState) {
@@ -381,9 +397,29 @@ export function restartLevel(state: GameState) {
   else replaceState(state, loadLevel(state.levelIndex, fresh, progress, sceneIndex));
 }
 
+/** Remember that a scene was beaten so the next one shows up unlocked on the map. */
+function markSceneCleared(state: GameState, levelIndex: number, sceneIndex: number) {
+  const cleared = state.sceneProgress[levelIndex] ?? 0;
+  if (sceneIndex + 1 > cleared) state.sceneProgress = { ...state.sceneProgress, [levelIndex]: sceneIndex + 1 };
+}
+
+/** How many scenes a chapter has (1 for classic single-scene chapters). */
+export function sceneCountOf(levelIndex: number) {
+  return LEVELS[levelIndex]?.scenes?.length ?? 1;
+}
+
+/** Scenes the player may pick on the map for this chapter. */
+function unlockedScenes(state: GameState, levelIndex: number) {
+  const total = sceneCountOf(levelIndex);
+  // Chapters already beaten (older saves included) have every scene open.
+  if (state.unlockedLevels > levelIndex + 1) return total;
+  return Math.min(total, (state.sceneProgress[levelIndex] ?? 0) + 1);
+}
+
 /** Move on to the next scene of the current chapter, keeping the knight's stats. */
 function advanceScene(state: GameState) {
   const next = state.sceneIndex + 1;
+  markSceneCleared(state, state.levelIndex, state.sceneIndex);
   const carry = { ...state.player };
   const progress = progressFrom(state);
   const levelIndex = state.levelIndex;
@@ -602,6 +638,7 @@ function updateVillage(state: GameState) {
     if (state.keys["e"]) {
       state.keys["e"] = false;
       state.mode = "map";
+      state.mapView = "chapters";
       state.mapCursor = state.selectedLevel;
       sfx.talk();
       return;
@@ -618,7 +655,7 @@ function updateVillage(state: GameState) {
       sfx.buy();
       return;
     }
-    showMessage(state, `Press E to enter the ${LEVELS[state.selectedLevel]!.short} portal`, 20);
+    showMessage(state, `Press E to enter the ${sceneLabel(state.selectedLevel, state.selectedScene)} portal`, 20);
   }
 
   const npc = nearestNpc(state);
@@ -1250,8 +1287,10 @@ function updateCelebration(state: GameState) {
     advanceScene(state);
     return;
   }
+  markSceneCleared(state, state.levelIndex, state.sceneIndex);
   state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
   state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
+  state.selectedScene = 0;
   saveProgress(state);
   state.mode = "levelcomplete";
   state.levelCompleteTimer = 0;
@@ -1578,17 +1617,27 @@ export function handleKeyDown(state: GameState, key: string) {
     return;
   }
   if (state.mode === "map") {
+    if (state.mapView === "scenes") {
+      const total = sceneCountOf(state.mapChapter);
+      if (key === "a" || key === "arrowleft") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 1);
+      else if (key === "d" || key === "arrowright") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 1);
+      else if (key === "w" || key === "arrowup") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 5);
+      else if (key === "s" || key === "arrowdown") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 5);
+      else if (key === "e" || key === "enter" || key === " ") pickScene(state, state.mapSceneCursor);
+      else if (key === "escape") {
+        state.mapView = "chapters";
+        state.keys["e"] = false;
+      }
+      return;
+    }
     if (key === "a" || key === "arrowleft") state.mapCursor = Math.max(0, state.mapCursor - 1);
     else if (key === "d" || key === "arrowright") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 1);
     else if (key === "w" || key === "arrowup") state.mapCursor = Math.max(0, state.mapCursor - 5);
     else if (key === "s" || key === "arrowdown") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 5);
     else if (key === "e" || key === "enter" || key === " ") {
       if (state.mapCursor < state.unlockedLevels) {
-        state.selectedLevel = state.mapCursor;
-        state.mode = "playing";
         state.keys["e"] = false;
-        sfx.buy();
-        showMessage(state, `Portal set to ${LEVELS[state.selectedLevel]!.short}. Walk right into it!`, 200);
+        openChapterScenes(state, state.mapCursor);
       } else {
         sfx.deny();
       }
@@ -1645,7 +1694,7 @@ export function confirmLevelStart(state: GameState) {
   if (state.mode !== "levelstart") return false;
   const level = state.pendingLevel;
   state.mode = "playing";
-  startLevel(state, level);
+  startLevel(state, level, state.selectedScene);
   return true;
 }
 
@@ -2738,7 +2787,7 @@ function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
 
   ctx.fillStyle = "#0f172a";
   ctx.font = "bold 13px sans-serif";
-  const label = level.short;
+  const label = sceneLabel(state.selectedLevel, state.selectedScene);
   ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
 }
 
@@ -2769,7 +2818,13 @@ function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#fbbf24";
   ctx.font = "bold 22px sans-serif";
-  ctx.fillText(`LEVEL ${state.pendingLevel + 1}`, CANVAS_WIDTH / 2, 130);
+  ctx.fillText(
+    LEVELS[state.pendingLevel]!.scenes
+      ? `CHAPTER ${state.pendingLevel + 1} — SCENE ${state.selectedScene + 1}`
+      : `LEVEL ${state.pendingLevel + 1}`,
+    CANVAS_WIDTH / 2,
+    130
+  );
 
   ctx.fillStyle = "#f8fafc";
   ctx.font = "bold 40px sans-serif";
@@ -2803,18 +2858,49 @@ function mapTileCenter(i: number) {
   return { cx: 120 + col * 145, cy: 268 + row * 158 };
 }
 
-/** Canvas click on the world map: pick a level tile. Returns true if handled. */
+const SCENE_TILE_W = 130;
+const SCENE_TILE_H = 96;
+const SCENE_BACK = { x: 30, y: 540, w: 140, h: 34 };
+
+function sceneTileCenter(i: number) {
+  const col = i % 5;
+  const row = Math.floor(i / 5);
+  return { cx: 130 + col * 148, cy: 300 + row * 130 };
+}
+
+/** Canvas click on the world map: chapter grid, then the chapter's scene grid. */
 export function handleMapClick(state: GameState, x: number, y: number): boolean {
   if (state.mode !== "map") return false;
+
+  if (state.mapView === "scenes") {
+    if (
+      x >= SCENE_BACK.x &&
+      x <= SCENE_BACK.x + SCENE_BACK.w &&
+      y >= SCENE_BACK.y &&
+      y <= SCENE_BACK.y + SCENE_BACK.h
+    ) {
+      state.mapView = "chapters";
+      sfx.talk();
+      return true;
+    }
+    const total = sceneCountOf(state.mapChapter);
+    for (let i = 0; i < total; i++) {
+      const { cx, cy } = sceneTileCenter(i);
+      if (Math.abs(x - cx) <= SCENE_TILE_W / 2 && Math.abs(y - cy) <= SCENE_TILE_H / 2) {
+        state.mapSceneCursor = i;
+        pickScene(state, i);
+        return true;
+      }
+    }
+    return false;
+  }
+
   for (let i = 0; i < LEVELS.length; i++) {
     const { cx, cy } = mapTileCenter(i);
     if (Math.abs(x - cx) <= MAP_TILE_W / 2 && Math.abs(y - cy) <= MAP_TILE_H / 2) {
       state.mapCursor = i;
       if (i < state.unlockedLevels) {
-        state.selectedLevel = i;
-        sfx.buy();
-        state.mode = "playing";
-        showMessage(state, `Portal set to ${LEVELS[i]!.short}. Walk right into it!`, 200);
+        openChapterScenes(state, i);
       } else {
         sfx.hurt();
         showMessage(state, "That chapter is still locked.", 120);
@@ -2825,7 +2911,144 @@ export function handleMapClick(state: GameState, x: number, y: number): boolean 
   return false;
 }
 
+/** Show the scene grid of a chapter (or set the portal if it has a single scene). */
+function openChapterScenes(state: GameState, levelIndex: number) {
+  state.mapChapter = levelIndex;
+  state.mapSceneCursor = Math.max(0, unlockedScenes(state, levelIndex) - 1);
+  state.mapView = "scenes";
+  sfx.talk();
+}
+
+function pickScene(state: GameState, sceneIndex: number) {
+  const levelIndex = state.mapChapter;
+  if (sceneIndex >= unlockedScenes(state, levelIndex)) {
+    sfx.hurt();
+    showMessage(state, "That scene is still locked.", 120);
+    return;
+  }
+  state.selectedLevel = levelIndex;
+  state.selectedScene = sceneIndex;
+  state.mapCursor = levelIndex;
+  state.mode = "playing";
+  state.keys["e"] = false;
+  sfx.buy();
+  const label = sceneLabel(levelIndex, sceneIndex);
+  showMessage(state, `Portal set to ${label}. Walk right into it!`, 200);
+}
+
+/** "Sunny Forest — Scene 3" (or just the chapter for single-scene chapters). */
+export function sceneLabel(levelIndex: number, sceneIndex: number) {
+  const level = LEVELS[levelIndex]!;
+  if (!level.scenes) return level.short;
+  return `${level.short} — Scene ${sceneIndex + 1}`;
+}
+
+function drawMapScenes(ctx: CanvasRenderingContext2D, state: GameState) {
+  const level = LEVELS[state.mapChapter]!;
+  const total = sceneCountOf(state.mapChapter);
+  const open = unlockedScenes(state, state.mapChapter);
+
+  ctx.fillStyle = "rgba(2,6,23,0.94)";
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.textAlign = "left";
+
+  ctx.fillStyle = "#facc15";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText(level.name, 30, 44);
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px sans-serif";
+  ctx.fillText(`Boss: ${BOSSES[level.boss].name} • ${open}/${total} scenes unlocked`, 30, 64);
+  ctx.fillText("Click a scene, or arrows + E • Esc to go back", 30, 82);
+
+  // Chapter banner with the boss portrait.
+  const bandY = 96;
+  const bandH = 104;
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(30, bandY, CANVAS_WIDTH - 60, bandH);
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(30, bandY, CANVAS_WIDTH - 60, bandH);
+  drawBossFace(ctx, level.boss, 100, bandY + bandH / 2, 38);
+  const cursorScene = level.scenes?.[state.mapSceneCursor];
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 19px sans-serif";
+  ctx.fillText(cursorScene ? cursorScene.name : "Scene 1", 170, bandY + 44);
+  ctx.fillStyle = state.mapSceneCursor < open ? "#86efac" : "#64748b";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText(
+    state.mapSceneCursor >= open
+      ? "Locked — clear the scene before it"
+      : state.mapSceneCursor === total - 1
+        ? "Boss fight — bring the TNT!"
+        : "Reach the flag at the end to move on",
+    170,
+    bandY + 74
+  );
+
+  for (let i = 0; i < total; i++) {
+    const { cx, cy } = sceneTileCenter(i);
+    const unlocked = i < open;
+    const selected = i === state.mapSceneCursor;
+    const isBoss = i === total - 1;
+
+    ctx.fillStyle = unlocked ? (isBoss ? "#3b1220" : "#1e293b") : "#0f172a";
+    ctx.fillRect(cx - SCENE_TILE_W / 2, cy - SCENE_TILE_H / 2, SCENE_TILE_W, SCENE_TILE_H);
+    ctx.strokeStyle = selected ? "#facc15" : unlocked ? "#475569" : "#1e293b";
+    ctx.lineWidth = selected ? 4 : 2;
+    ctx.strokeRect(cx - SCENE_TILE_W / 2, cy - SCENE_TILE_H / 2, SCENE_TILE_W, SCENE_TILE_H);
+
+    if (!unlocked) {
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(cx - 14, cy - 22, 28, 22);
+      ctx.beginPath();
+      ctx.arc(cx, cy - 22, 11, Math.PI, 0);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = "#334155";
+      ctx.stroke();
+    } else if (isBoss) {
+      drawBossFace(ctx, level.boss, cx, cy - 16, 22);
+    } else {
+      // little flag icon for a normal scene
+      ctx.strokeStyle = "#cbd5e1";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, cy - 2);
+      ctx.lineTo(cx - 12, cy - 34);
+      ctx.stroke();
+      ctx.fillStyle = "#4ade80";
+      ctx.beginPath();
+      ctx.moveTo(cx - 12, cy - 34);
+      ctx.lineTo(cx + 16, cy - 27);
+      ctx.lineTo(cx - 12, cy - 20);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = unlocked ? "#f8fafc" : "#475569";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText(`Scene ${i + 1}`, cx, cy + 22);
+    ctx.font = "11px sans-serif";
+    ctx.fillStyle = unlocked ? (isBoss ? "#fca5a5" : "#94a3b8") : "#334155";
+    ctx.fillText(isBoss ? "Boss Fight" : unlocked ? "Ready" : "Locked", cx, cy + 40);
+    ctx.textAlign = "left";
+  }
+
+  ctx.fillStyle = "#1e293b";
+  ctx.fillRect(SCENE_BACK.x, SCENE_BACK.y, SCENE_BACK.w, SCENE_BACK.h);
+  ctx.strokeStyle = "#64748b";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(SCENE_BACK.x, SCENE_BACK.y, SCENE_BACK.w, SCENE_BACK.h);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText("← All chapters", SCENE_BACK.x + 16, SCENE_BACK.y + 23);
+}
+
 function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (state.mapView === "scenes") {
+    drawMapScenes(ctx, state);
+    return;
+  }
   ctx.fillStyle = "rgba(2,6,23,0.92)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   ctx.fillStyle = "#facc15";
@@ -2875,7 +3098,7 @@ function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillText(selUnlocked ? `Boss: ${BOSSES[sel.boss].name}` : "Locked — clear the chapter before it", 180, bandY + 72);
   ctx.fillStyle = "#94a3b8";
   ctx.font = "13px sans-serif";
-  ctx.fillText(selUnlocked ? "Press E or click again to set the portal" : "", 180, bandY + 96);
+  ctx.fillText(selUnlocked ? "Press E or click to see this chapter's scenes" : "", 180, bandY + 96);
 
   LEVELS.forEach((level, i) => {
     const { cx, cy } = mapTileCenter(i);
