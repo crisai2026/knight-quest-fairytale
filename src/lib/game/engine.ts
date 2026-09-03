@@ -3340,8 +3340,9 @@ function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
 }
 
 function drawIntroScene(ctx: CanvasRenderingContext2D, state: GameState) {
-  const phase = state.cutscenePhase;
-  const t = state.cutsceneTimer;
+  // The first pages tell the village's story; the dragon scene starts after them.
+  const phase = Math.max(0, state.cutscenePhase - VILLAGE_PAGES);
+  const t = state.cutsceneTimer - VILLAGE_PAGES * 190;
 
   const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
   grad.addColorStop(0, phase === 0 ? "#7dd3fc" : "#450a0a");
