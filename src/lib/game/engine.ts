@@ -2784,105 +2784,71 @@ function drawCoins(ctx: CanvasRenderingContext2D, state: GameState) {
   }
 }
 
-function drawNpc(ctx: CanvasRenderingContext2D, npc: Npc, cameraX: number, active: boolean) {
-  const x = npc.x - cameraX;
-  if (x < -60 || x > CANVAS_WIDTH + 60) return;
-  const y = GROUND_Y - 46;
-  ctx.fillStyle = npc.color;
-  ctx.fillRect(x - 12, y + 14, 24, 32);
-  ctx.fillStyle = "#fcd7b6";
-  ctx.beginPath();
-  ctx.arc(x, y + 6, 11, 0, Math.PI * 2);
-  ctx.fill();
-  if (npc.kind === "mayor") {
-    ctx.fillStyle = "#facc15";
-    ctx.fillRect(x - 12, y - 8, 24, 6);
-    ctx.fillRect(x - 6, y - 14, 12, 8);
-  } else if (npc.kind === "shop") {
-    ctx.fillStyle = "#f8fafc";
-    ctx.fillRect(x - 26, y - 34, 52, 18);
-    ctx.fillStyle = "#0f172a";
-    ctx.font = "bold 11px sans-serif";
-    ctx.fillText("SHOP", x - 16, y - 21);
-  }
-  ctx.fillStyle = "#0f172a";
-  ctx.fillRect(x - 5, y + 4, 3, 3);
-  ctx.fillRect(x + 3, y + 4, 3, 3);
+const PORTAL_COLORS: Record<Biome, string> = {
+  sunny: "#4ade80",
+  night: "#4338ca",
+  beach: "#f59e0b",
+  ocean: "#06b6d4",
+  sky: "#38bdf8",
+  jungle: "#16a34a",
+  snow: "#e0f2fe",
+  desert: "#fbbf24",
+  mountain: "#94a3b8",
+  village: "#a3a3a3",
+  dark: "#1e293b",
+  fire: "#f97316",
+  castle: "#7c3aed",
+};
 
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "11px sans-serif";
-  ctx.fillText(npc.name, x - ctx.measureText(npc.name).width / 2, y - 40);
+/** Whole top-down village: ground, then depth-sorted props, NPCs and the knight. */
+function drawVillageTopDown(ctx: CanvasRenderingContext2D, state: GameState) {
+  const { cameraX: camX, cameraY: camY } = state;
+  drawVillageGround(ctx, camX, camY);
 
-  if (active) {
-    ctx.fillStyle = "#b45309";
-    ctx.font = "bold 13px sans-serif";
-    ctx.fillText("Press E", x - 22, y - 56);
-  }
-}
-
-function drawMapBoard(ctx: CanvasRenderingContext2D, state: GameState) {
-  const x = MAP_BOARD_X - state.cameraX;
-  if (x < -120 || x > CANVAS_WIDTH + 120) return;
-  ctx.fillStyle = "#78350f";
-  ctx.fillRect(x - 6, GROUND_Y - 70, 12, 70);
-  ctx.fillRect(x - 60, GROUND_Y - 70, 12, 70);
-  ctx.fillRect(x + 48, GROUND_Y - 70, 12, 70);
-  ctx.fillStyle = "#fef3c7";
-  ctx.fillRect(x - 70, GROUND_Y - 160, 140, 96);
-  ctx.strokeStyle = "#78350f";
-  ctx.lineWidth = 5;
-  ctx.strokeRect(x - 70, GROUND_Y - 160, 140, 96);
-  ctx.fillStyle = "#78350f";
-  ctx.font = "bold 14px sans-serif";
-  ctx.fillText("WORLD MAP", x - 46, GROUND_Y - 136);
-  ctx.font = "12px sans-serif";
-  ctx.fillText(`${state.unlockedLevels}/10 unlocked`, x - 42, GROUND_Y - 112);
-  ctx.fillText("Press E", x - 24, GROUND_Y - 86);
-}
-
-function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
-  const x = PORTAL_X - state.cameraX;
-  if (x < -160 || x > CANVAS_WIDTH + 160) return;
+  const p = state.player;
+  const f = feet(p);
+  const talk = state.mode === "playing" ? nearestNpc(state) : null;
   const level = LEVELS[state.selectedLevel]!;
-  const themeColors: Record<Biome, string> = {
-    sunny: "#4ade80",
-    night: "#4338ca",
-    beach: "#f59e0b",
-    ocean: "#06b6d4",
-    sky: "#38bdf8",
-    jungle: "#16a34a",
-    snow: "#e0f2fe",
-    desert: "#fbbf24",
-    mountain: "#94a3b8",
-    village: "#a3a3a3",
-    dark: "#1e293b",
-    fire: "#f97316",
-    castle: "#7c3aed",
-  };
-  const color = themeColors[level.biome];
-  const t = Date.now() / 400;
-  const cy = GROUND_Y - 90;
-
-  ctx.fillStyle = "#334155";
-  ctx.fillRect(x - 74, GROUND_Y - 180, 16, 180);
-  ctx.fillRect(x + 58, GROUND_Y - 180, 16, 180);
-  ctx.fillRect(x - 74, GROUND_Y - 196, 148, 18);
-
-  for (let i = 4; i >= 0; i--) {
-    ctx.globalAlpha = 0.25 + i * 0.12;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, cy, 54 - i * 6 + Math.sin(t + i) * 3, 84 - i * 10 + Math.cos(t + i) * 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  drawBossFace(ctx, level.boss, x, cy, 26);
-
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "bold 13px sans-serif";
   const label = sceneLabel(state.selectedLevel, state.selectedScene);
-  ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
+  const nearBoard = Math.hypot(f.x - BOARD_POS.x, f.y - BOARD_POS.y) < 90;
+  const nearPortal = Math.hypot(f.x - PORTAL_POS.x, f.y - PORTAL_POS.y) < 100;
+
+  const extras = [
+    {
+      y: BOARD_POS.y,
+      draw: (c: CanvasRenderingContext2D) => drawBoardTopDown(c, state.unlockedLevels, nearBoard),
+    },
+    {
+      y: PORTAL_POS.y,
+      draw: (c: CanvasRenderingContext2D) =>
+        drawPortalTopDown(
+          c,
+          PORTAL_COLORS[level.biome],
+          label,
+          (cc, x, y, size) => drawBossFace(cc, level.boss, x, y, size),
+          nearPortal
+        ),
+    },
+    ...state.npcs.map((npc) => ({
+      y: npc.y,
+      draw: (c: CanvasRenderingContext2D) =>
+        drawVillagerTopDown(
+          c,
+          npc.x,
+          npc.y,
+          npc.color,
+          npc.name,
+          npc === talk,
+          npc.kind === "mayor" ? ("mayor" as const) : npc.kind === "shop" ? ("shop" as const) : undefined
+        ),
+    })),
+    {
+      y: f.y,
+      draw: (c: CanvasRenderingContext2D) => drawKnightTopDown(c, f.x, f.y, p.facing4, p.walkT),
+    },
+  ];
+
+  drawVillageProps(ctx, camX, camY, extras);
 }
 
 /** Throwaway enemy record so the intro can reuse the real monster art. */
