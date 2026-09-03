@@ -25,6 +25,16 @@ export type SceneDef = {
   bounces?: { x: number; y: number }[];
   /** One-line twist hint shown on the scene start card. */
   hint?: string;
+  /** Time of day / weather look. */
+  sky?: SceneSky;
+  /** Wet ground: the knight slides. */
+  slippery?: boolean;
+  /** Thick mist limits visibility. */
+  fog?: boolean;
+  /** Acorns rain down from the treetops. */
+  falling?: boolean;
+  /** Seconds to reach the flag before taking a hit. */
+  timeLimit?: number;
 };
 
 export type LevelDef = {
