@@ -506,6 +506,11 @@ function updatePlayer(state: GameState) {
   const keys = state.keys;
   const swim = state.swim;
 
+  if (state.topDown) {
+    updateVillage(state);
+    return;
+  }
+
   const moveLeft = keys["a"] || keys["arrowleft"];
   const moveRight = keys["d"] || keys["arrowright"];
 
@@ -608,11 +613,6 @@ function updatePlayer(state: GameState) {
   if (p.y > CANVAS_HEIGHT + 100) p.health = 0;
   if (p.invulnerable > 0) p.invulnerable--;
   if (state.biomeLabelTimer > 0) state.biomeLabelTimer--;
-
-  if (state.scene === "village") {
-    updateVillage(state);
-    return;
-  }
 
   // Boss trigger near the end of the level
   const level = LEVELS[state.levelIndex]!;
@@ -725,10 +725,6 @@ function updateVillage(state: GameState) {
   moveTopDown(state);
   if (state.mode !== "playing") return;
   const f = feet(p);
-
-  if (keyRHandled(state)) {
-    /* weapon switch handled elsewhere */
-  }
 
   // World map board
   if (Math.hypot(f.x - BOARD_POS.x, f.y - BOARD_POS.y) < 90) {
