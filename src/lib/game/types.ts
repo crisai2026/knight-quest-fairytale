@@ -157,6 +157,36 @@ export type GameState = {
   bounces: Bounce[];
   /** One-line hint shown on the scene start card. */
   sceneHint: string;
+  /** Time of day / weather look of this scene. */
+  sky: SceneSky;
+  /** Wet ground: the knight slides instead of stopping instantly. */
+  slippery: boolean;
+  /** Mist limits how far the knight can see. */
+  fog: boolean;
+  /** Acorns/branches drop from the trees above. */
+  fallers: Faller[];
+  fallerTimer: number;
+  /** Countdown race: frames left before the knight takes a hit (0 = no limit). */
+  timeLimit: number;
+  timeLeft: number;
+};
+
+export type SceneSky =
+  | "clear"
+  | "dawn"
+  | "mist"
+  | "rain"
+  | "grey"
+  | "golden"
+  | "dusk"
+  | "storm"
+  | "sunset";
+
+/** Something falling from the treetops that hurts on impact. */
+export type Faller = {
+  x: number;
+  y: number;
+  vy: number;
 };
 
 export type FoodKind = "bread" | "apple" | "cheese" | "chicken" | "berries";

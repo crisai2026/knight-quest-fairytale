@@ -1,4 +1,4 @@
-import type { Biome, BossKind, Chest, ChestItem, EnemyKind, Npc, Platform } from "./types";
+import type { Biome, BossKind, Chest, ChestItem, EnemyKind, Npc, Platform, SceneSky } from "./types";
 
 export const GROUND_Y = 520;
 
@@ -25,6 +25,16 @@ export type SceneDef = {
   bounces?: { x: number; y: number }[];
   /** One-line twist hint shown on the scene start card. */
   hint?: string;
+  /** Time of day / weather look. */
+  sky?: SceneSky;
+  /** Wet ground: the knight slides. */
+  slippery?: boolean;
+  /** Thick mist limits visibility. */
+  fog?: boolean;
+  /** Acorns rain down from the treetops. */
+  falling?: boolean;
+  /** Seconds to reach the flag before taking a hit. */
+  timeLimit?: number;
 };
 
 export type LevelDef = {
@@ -99,39 +109,46 @@ const MUSHROOM_Y = GROUND_Y - 26;
  */
 const FOREST_SCENES: SceneDef[] = [
   {
-    // 1. Warmup: a couple of monsters, wide platforms.
+    // 1. Misty dawn: short, calm, but you can barely see ahead.
     name: `Scene 1 — ${FOREST_SCENE_NAMES[0]}`,
     width: 1800,
+    sky: "mist",
+    fog: true,
     platforms: [plat(320, 430, 180), plat(680, 360, 170), plat(1080, 420, 180), plat(1420, 350, 160)],
     enemies: [furry(700), furry(1250)],
     chests: [chest(380, "food"), chest(1200, "bandage")],
-    hint: "A gentle walk — watch for monsters!",
+    hint: "Dawn mist — you can barely see. Walk carefully!",
   },
   {
-    // 2. Jumping scene: many platforms, barely any monsters.
+    // 2. Sunny morning: pure platforming while acorns rain from the trees.
     name: `Scene 2 — ${FOREST_SCENE_NAMES[1]}`,
     width: 2200,
+    sky: "dawn",
+    falling: true,
     platforms: [
       plat(260, 430, 150), plat(480, 350, 140), plat(700, 430, 150), plat(920, 350, 140),
       plat(1140, 430, 150), plat(1360, 350, 140), plat(1580, 430, 150), plat(1800, 350, 140),
     ],
     enemies: [furry(1050)],
     chests: [chest(520, "food", 350 - 24), chest(1640, "food", 430 - 24)],
-    hint: "Hop across the high platforms — food waits up top!",
+    hint: "Acorns rain from the treetops — keep moving while you climb!",
   },
   {
-    // 3. Monster gauntlet: flat ground, a long patrol line.
+    // 3. Rainy gauntlet: wet, slippery ground and a whole pack of monsters.
     name: `Scene 3 — ${FOREST_SCENE_NAMES[2]}`,
     width: 2500,
+    sky: "rain",
+    slippery: true,
     platforms: [plat(900, 400, 160), plat(1700, 400, 160)],
     enemies: [furry(480), furry(860), furry(1240), furry(1620), furry(2000)],
     chests: [chest(320, "bandage"), chest(1500, "food")],
-    hint: "A whole pack blocks the path — fight or sprint through!",
+    hint: "Rain! The mud is slippery and a whole pack blocks the path.",
   },
   {
     // 4. Wind scene: gusts push the knight backwards.
     name: `Scene 4 — ${FOREST_SCENE_NAMES[3]}`,
     width: 2300,
+    sky: "grey",
     wind: true,
     platforms: [plat(340, 420, 150), plat(620, 340, 140), plat(980, 420, 150), plat(1340, 340, 140), plat(1700, 420, 150)],
     enemies: [furry(800), furry(1500)],
@@ -142,6 +159,7 @@ const FOREST_SCENES: SceneDef[] = [
     // 5. Moving platforms: ride them to the high ledges.
     name: `Scene 5 — ${FOREST_SCENE_NAMES[4]}`,
     width: 2500,
+    sky: "golden",
     platforms: [
       plat(300, 420, 150),
       mplat(620, 400, 130, "y", 70, 0.02),
@@ -158,15 +176,18 @@ const FOREST_SCENES: SceneDef[] = [
     // 6. Hunger challenge: long walk, no food until the very end.
     name: `Scene 6 — ${FOREST_SCENE_NAMES[5]}`,
     width: 2900,
+    sky: "dusk",
+    timeLimit: 60,
     platforms: [plat(500, 420, 160), plat(1100, 360, 150), plat(1700, 420, 160), plat(2300, 360, 150)],
     enemies: [furry(800), furry(1500), furry(2200)],
     chests: [chest(380, "bandage"), chest(2650, "food")],
-    hint: "No food until the very end — save your sprint!",
+    hint: "Night is falling: reach the flag in 60s, and no food on the way!",
   },
   {
     // 7. Bounce mushrooms: launch up to tall ledges (exempt from reachability clamp).
     name: `Scene 7 — ${FOREST_SCENE_NAMES[6]}`,
     width: 2400,
+    sky: "sunset",
     platforms: [
       plat(560, 250, 150), plat(900, 430, 150), plat(1180, 220, 150), plat(1560, 430, 150), plat(1840, 250, 150),
     ],
@@ -181,6 +202,7 @@ const FOREST_SCENES: SceneDef[] = [
     // 8. Air attack: winged monsters swoop above the path.
     name: `Scene 8 — ${FOREST_SCENE_NAMES[7]}`,
     width: 2400,
+    sky: "storm",
     platforms: [plat(420, 420, 160), plat(1020, 360, 150), plat(1620, 420, 160)],
     enemies: [winged(500), winged(1000, 230), winged(1500), winged(2000, 240), furry(1300)],
     chests: [chest(360, "arrows"), chest(1400, "food")],
@@ -190,7 +212,10 @@ const FOREST_SCENES: SceneDef[] = [
     // 9. Mixed review: wind + a moving platform + a mushroom + monsters.
     name: `Scene 9 — ${FOREST_SCENE_NAMES[8]}`,
     width: 2700,
+    sky: "rain",
     wind: true,
+    slippery: true,
+    falling: true,
     platforms: [
       plat(360, 420, 150),
       mplat(760, 390, 130, "y", 70, 0.02),
@@ -207,6 +232,7 @@ const FOREST_SCENES: SceneDef[] = [
     // 10. Boss arena (unchanged).
     name: `Scene 10 — ${FOREST_SCENE_NAMES[9]}`,
     width: 2200,
+    sky: "storm",
     platforms: [plat(320, 430, 170), plat(700, 350, 150)],
     enemies: [{ kind: "furry", x: 620, patrolStart: 500, patrolEnd: 880 }],
     chests: [chest(300, "firstaid"), chest(820, "food")],

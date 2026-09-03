@@ -15,6 +15,7 @@ import type {
   FoodKind,
   FoodDrop,
   FlagDrop,
+  SceneSky,
 } from "./types";
 import {
   LEVELS,
@@ -280,6 +281,13 @@ function baseState(carry: Player, progress: Progress): GameState {
     windDir: -1,
     bounces: [],
     sceneHint: "",
+    sky: "clear",
+    slippery: false,
+    fog: false,
+    fallers: [],
+    fallerTimer: 0,
+    timeLimit: 0,
+    timeLeft: 0,
   };
 }
 
@@ -329,6 +337,13 @@ export function loadLevel(
   state.windBlowing = false;
   state.bounces = (scene?.bounces ?? []).map((b) => ({ ...b }));
   state.sceneHint = scene?.hint ?? "";
+  state.sky = scene?.sky ?? "clear";
+  state.slippery = scene?.slippery === true;
+  state.fog = scene?.fog === true;
+  state.fallers = [];
+  state.fallerTimer = scene?.falling === true ? 1 : 0;
+  state.timeLimit = (scene?.timeLimit ?? 0) * 60;
+  state.timeLeft = state.timeLimit;
   state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
   state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
@@ -570,7 +585,19 @@ function updatePlayer(state: GameState) {
   const sprinting = keys["shift"] && p.hunger > 0;
   const speed = swim ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
 
-  if (moveLeft && !moveRight) {
+  if (state.slippery && !swim) {
+    // Wet mud: the knight builds up speed and slides to a stop.
+    if (moveLeft && !moveRight) {
+      p.vx = Math.max(-speed, p.vx - 0.4);
+      p.facing = "left";
+    } else if (moveRight && !moveLeft) {
+      p.vx = Math.min(speed, p.vx + 0.4);
+      p.facing = "right";
+    } else {
+      p.vx *= 0.96;
+      if (Math.abs(p.vx) < 0.15) p.vx = 0;
+    }
+  } else if (moveLeft && !moveRight) {
     p.vx = -speed;
     p.facing = "left";
   } else if (moveRight && !moveLeft) {
@@ -612,6 +639,9 @@ function updatePlayer(state: GameState) {
       }
     }
   }
+
+  updateFallers(state);
+  updateSceneTimer(state);
 
   if (swim) {
     if (keys[" "] || keys["w"] || keys["arrowup"]) p.vy -= 0.42;
@@ -731,6 +761,64 @@ function updatePlayer(state: GameState) {
     }
     state.boss = createBoss(level.boss, arenaX, GROUND_Y);
     showMessage(state, `${def.name}! Grab TNT from a pail, throw it while it rests.`, 200);
+  }
+}
+
+/** Acorns dropping from the treetops around the knight. */
+function updateFallers(state: GameState) {
+  if (state.fallerTimer <= 0) return;
+  const p = state.player;
+  state.fallerTimer++;
+  if (state.fallerTimer % 34 === 0) {
+    const x = p.x + (Math.random() - 0.5) * 520;
+    state.fallers.push({ x: clamp(x, 20, state.worldWidth - 20), y: -20, vy: 2 + Math.random() * 1.5 });
+  }
+  for (const f of state.fallers) {
+    f.vy = Math.min(9, f.vy + 0.22);
+    f.y += f.vy;
+    const box = { x: f.x - 9, y: f.y - 9, width: 18, height: 18 };
+    if (rectsOverlap(p, box) && p.invulnerable <= 0) {
+      p.health = Math.max(0, p.health - 1);
+      p.invulnerable = 40;
+      p.vy = -3;
+      sfx.hurt();
+      showMessage(state, "An acorn bonked you!", 60);
+      f.y = GROUND_Y + 999;
+    }
+    if (f.y >= GROUND_Y - 4 && f.y < GROUND_Y + 900) {
+      f.y = GROUND_Y + 999;
+      for (let i = 0; i < 4; i++) {
+        state.particles.push({
+          x: f.x,
+          y: GROUND_Y - 4,
+          vx: (Math.random() - 0.5) * 3,
+          vy: -Math.random() * 2,
+          life: 20,
+          maxLife: 20,
+          color: "#a16207",
+          size: 2,
+        });
+      }
+    }
+  }
+  state.fallers = state.fallers.filter((f) => f.y < GROUND_Y + 500);
+}
+
+/** Countdown scenes: run out of time and the knight takes a hit. */
+function updateSceneTimer(state: GameState) {
+  if (state.timeLimit <= 0) return;
+  const p = state.player;
+  if (state.timeLeft > 0) {
+    state.timeLeft--;
+    if (state.timeLeft === 600) showMessage(state, "10 seconds left — run!", 90);
+    return;
+  }
+  if (p.invulnerable <= 0) {
+    p.health = Math.max(0, p.health - 1);
+    p.invulnerable = 90;
+    sfx.hurt();
+    showMessage(state, "Out of time! Night is closing in.", 90);
+    state.timeLeft = 300;
   }
 }
 
@@ -2101,14 +2189,27 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     fire: ["#450a0a", "#b45309"],
     castle: ["#1e1b4b", "#312e81"],
   };
-  gradient.addColorStop(0, stops[b][0]);
-  gradient.addColorStop(1, stops[b][1]);
+  // A scene can override the biome sky with its own time of day / weather.
+  const skyStops: Record<Exclude<SceneSky, "clear">, [string, string]> = {
+    dawn: ["#fda4af", "#fef3c7"],
+    mist: ["#cbd5e1", "#e2e8f0"],
+    rain: ["#64748b", "#94a3b8"],
+    grey: ["#94a3b8", "#d1d5db"],
+    golden: ["#38bdf8", "#fde68a"],
+    dusk: ["#4c1d95", "#f59e0b"],
+    storm: ["#1e293b", "#475569"],
+    sunset: ["#f97316", "#fcd34d"],
+  };
+  const pair = state.sky !== "clear" && state.scene === "level" ? skyStops[state.sky] : stops[b];
+  gradient.addColorStop(0, pair[0]);
+  gradient.addColorStop(1, pair[1]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   const now = Date.now();
+  const overcast = state.sky === "rain" || state.sky === "storm" || state.sky === "grey" || state.sky === "mist";
 
-  if (b === "sunny" || b === "beach" || b === "village" || b === "sky" || b === "jungle") {
+  if (!overcast && (b === "sunny" || b === "beach" || b === "village" || b === "sky" || b === "jungle")) {
     ctx.fillStyle = "#fde047";
     ctx.beginPath();
     ctx.arc(680, 90, 44, 0, Math.PI * 2);
@@ -2276,6 +2377,87 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     fog.addColorStop(1, "rgba(0,0,0,0.8)");
     ctx.fillStyle = fog;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  }
+
+  drawWeather(ctx, state, now);
+}
+
+/** Per-scene weather: dark clouds, rain, mist banks and lightning. */
+function drawWeather(ctx: CanvasRenderingContext2D, state: GameState, now: number) {
+  if (state.scene !== "level" || state.sky === "clear") return;
+  const sky = state.sky;
+
+  if (sky === "rain" || sky === "storm" || sky === "grey") {
+    ctx.fillStyle = sky === "storm" ? "rgba(15,23,42,0.75)" : "rgba(71,85,105,0.55)";
+    for (let i = 0; i < 9; i++) {
+      const cx = ((i * 330 - state.cameraX * 0.25) % 1800) - 200;
+      const cy = 70 + (i % 3) * 46;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 92, 30, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 70, cy + 8, 66, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (sky === "rain" || sky === "storm") {
+    ctx.strokeStyle = "rgba(191,219,254,0.55)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 90; i++) {
+      const rx = (i * 149 - state.cameraX * 0.6) % CANVAS_WIDTH;
+      const ry = (now / 2 + i * 83) % CANVAS_HEIGHT;
+      const x = ((rx + CANVAS_WIDTH) % CANVAS_WIDTH) | 0;
+      ctx.beginPath();
+      ctx.moveTo(x, ry);
+      ctx.lineTo(x - 5, ry + 16);
+      ctx.stroke();
+    }
+  }
+
+  if (sky === "storm") {
+    // Occasional lightning flash.
+    const flash = (now % 4300) < 110;
+    if (flash) {
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+  }
+
+  if (sky === "mist" || sky === "dusk") {
+    ctx.fillStyle = sky === "mist" ? "rgba(241,245,249,0.5)" : "rgba(30,27,75,0.35)";
+    for (let i = 0; i < 6; i++) {
+      const mx = ((i * 300 - state.cameraX * 0.15 - now / 90) % 1900) - 200;
+      ctx.beginPath();
+      ctx.ellipse(mx, GROUND_Y - 60 - (i % 3) * 70, 210, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/** Thick mist: only a small circle around the knight stays clear. */
+function drawFogOverlay(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!state.fog) return;
+  const cx = state.player.x - state.cameraX + state.player.width / 2;
+  const cy = state.player.y + state.player.height / 2;
+  const g = ctx.createRadialGradient(cx, cy, 60, cx, cy, 330);
+  g.addColorStop(0, "rgba(226,232,240,0)");
+  g.addColorStop(0.6, "rgba(226,232,240,0.55)");
+  g.addColorStop(1, "rgba(226,232,240,0.92)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+/** Acorns tumbling down from the treetops. */
+function drawFallers(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const f of state.fallers) {
+    const x = f.x - state.cameraX;
+    if (x < -30 || x > CANVAS_WIDTH + 30) continue;
+    ctx.fillStyle = "#92400e";
+    ctx.beginPath();
+    ctx.ellipse(x, f.y, 8, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#451a03";
+    ctx.fillRect(x - 8, f.y - 11, 16, 7);
+    ctx.fillRect(x - 1, f.y - 17, 3, 6);
   }
 }
 
@@ -3720,7 +3902,20 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     for (const t of state.tntList) drawTNT(ctx, t, state.cameraX);
     for (const a of state.arrows) drawArrow(ctx, a, state.cameraX);
 
+    drawFallers(ctx, state);
     drawParticles(ctx, state);
+    drawFogOverlay(ctx, state);
+
+    if (state.timeLimit > 0) {
+      const secs = Math.ceil(state.timeLeft / 60);
+      ctx.font = "bold 30px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(CANVAS_WIDTH / 2 - 70, 16, 140, 44);
+      ctx.fillStyle = secs <= 10 ? "#f87171" : "#fde68a";
+      ctx.fillText(`${secs}s`, CANVAS_WIDTH / 2, 48);
+      ctx.textAlign = "left";
+    }
   }
 
 
