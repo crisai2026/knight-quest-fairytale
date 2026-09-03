@@ -1,3 +1,34 @@
+  if (state.mode === "map") {
+    if (state.mapView === "scenes") {
+      const total = sceneCountOf(state.mapChapter);
+      if (key === "a" || key === "arrowleft") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 1);
+      else if (key === "d" || key === "arrowright") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 1);
+      else if (key === "w" || key === "arrowup") state.mapSceneCursor = Math.max(0, state.mapSceneCursor - 5);
+      else if (key === "s" || key === "arrowdown") state.mapSceneCursor = Math.min(total - 1, state.mapSceneCursor + 5);
+      else if (key === "e" || key === "enter" || key === " ") pickScene(state, state.mapSceneCursor);
+      else if (key === "escape") {
+        state.mapView = "chapters";
+        state.keys["e"] = false;
+      }
+      return;
+    }
+    if (key === "a" || key === "arrowleft") state.mapCursor = Math.max(0, state.mapCursor - 1);
+    else if (key === "d" || key === "arrowright") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 1);
+    else if (key === "w" || key === "arrowup") state.mapCursor = Math.max(0, state.mapCursor - 5);
+    else if (key === "s" || key === "arrowdown") state.mapCursor = Math.min(LEVELS.length - 1, state.mapCursor + 5);
+    else if (key === "e" || key === "enter" || key === " ") {
+      if (state.mapCursor < state.unlockedLevels) {
+        state.keys["e"] = false;
+        openChapterScenes(state, state.mapCursor);
+      } else {
+        sfx.deny();
+      }
+    } else if (key === "escape") {
+      state.mode = "playing";
+      state.keys["e"] = false;
+    }
+    return;
+  }
 import type {
   GameState,
   Player,
@@ -652,7 +683,7 @@ function updateVillage(state: GameState) {
       sfx.buy();
       return;
     }
-    showMessage(state, `Press E to enter the ${LEVELS[state.selectedLevel]!.short} portal`, 20);
+    showMessage(state, `Press E to enter the ${sceneLabel(state.selectedLevel, state.selectedScene)} portal`, 20);
   }
 
   const npc = nearestNpc(state);
@@ -2773,7 +2804,7 @@ function drawPortal(ctx: CanvasRenderingContext2D, state: GameState) {
 
   ctx.fillStyle = "#0f172a";
   ctx.font = "bold 13px sans-serif";
-  const label = level.short;
+  const label = sceneLabel(state.selectedLevel, state.selectedScene);
   ctx.fillText(label, x - ctx.measureText(label).width / 2, GROUND_Y - 208);
 }
 
@@ -2804,7 +2835,13 @@ function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#fbbf24";
   ctx.font = "bold 22px sans-serif";
-  ctx.fillText(`LEVEL ${state.pendingLevel + 1}`, CANVAS_WIDTH / 2, 130);
+  ctx.fillText(
+    LEVELS[state.pendingLevel]!.scenes
+      ? `CHAPTER ${state.pendingLevel + 1} — SCENE ${state.selectedScene + 1}`
+      : `LEVEL ${state.pendingLevel + 1}`,
+    CANVAS_WIDTH / 2,
+    130
+  );
 
   ctx.fillStyle = "#f8fafc";
   ctx.font = "bold 40px sans-serif";
@@ -3025,6 +3062,10 @@ function drawMapScenes(ctx: CanvasRenderingContext2D, state: GameState) {
 }
 
 function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (state.mapView === "scenes") {
+    drawMapScenes(ctx, state);
+    return;
+  }
   ctx.fillStyle = "rgba(2,6,23,0.92)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   ctx.fillStyle = "#facc15";
@@ -3074,7 +3115,7 @@ function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillText(selUnlocked ? `Boss: ${BOSSES[sel.boss].name}` : "Locked — clear the chapter before it", 180, bandY + 72);
   ctx.fillStyle = "#94a3b8";
   ctx.font = "13px sans-serif";
-  ctx.fillText(selUnlocked ? "Press E or click again to set the portal" : "", 180, bandY + 96);
+  ctx.fillText(selUnlocked ? "Press E or click to see this chapter's scenes" : "", 180, bandY + 96);
 
   LEVELS.forEach((level, i) => {
     const { cx, cy } = mapTileCenter(i);
