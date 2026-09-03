@@ -19,6 +19,12 @@ export type SceneDef = {
   chests: Chest[];
   /** Only the final scene of a chapter has the boss. */
   boss?: boolean;
+  /** Periodic wind gusts push the knight sideways. */
+  wind?: boolean;
+  /** Bouncy mushrooms that launch the knight. */
+  bounces?: { x: number; y: number }[];
+  /** One-line twist hint shown on the scene start card. */
+  hint?: string;
 };
 
 export type LevelDef = {
@@ -72,40 +78,142 @@ const FOREST_SCENE_NAMES = [
   "The Furry King's Grove",
 ];
 
-function forestScene(i: number): SceneDef {
-  const name = `Scene ${i + 1} — ${FOREST_SCENE_NAMES[i]}`;
-  if (i === 9) {
-    return {
-      name,
-      width: 2200,
-      platforms: [plat(320, 430, 170), plat(700, 350, 150)],
-      enemies: [{ kind: "furry", x: 620, patrolStart: 500, patrolEnd: 880 }],
-      chests: [chest(300, "firstaid"), chest(820, "food")],
-      boss: true,
-    };
-  }
-  const width = 1800 + i * 130;
-  const step = 360 - i * 12;
-  const count = 3 + Math.floor(i / 3);
-  const platforms: Platform[] = [];
-  const enemies: EnemySpawn[] = [];
-  const chests: Chest[] = [];
-  for (let k = 0; k < count + 1; k++) {
-    const x = 300 + k * step;
-    if (x + 160 > width - 220) break;
-    platforms.push(plat(x, k % 2 === 0 ? 430 : 350, 160 - i * 4));
-  }
-  for (let k = 0; k < count; k++) {
-    const x = 420 + k * (step + 60);
-    if (x > width - 260) break;
-    enemies.push({ kind: "furry", x, patrolStart: x - 90, patrolEnd: x + 190 });
-  }
-  chests.push(chest(360, i % 2 === 0 ? "food" : "bandage"));
-  if (width > 2000) chests.push(chest(Math.round(width * 0.6), i % 3 === 0 ? "firstaid" : "food"));
-  return { name, width, platforms, enemies, chests };
+/** A moving platform: oscillates around (x, y) on the given axis. */
+function mplat(x: number, y: number, width: number, axis: "x" | "y", range: number, speed: number): Platform {
+  return { x, y, width, height: 20, axis, range, speed };
 }
 
-const FOREST_SCENES: SceneDef[] = Array.from({ length: 10 }, (_, i) => forestScene(i));
+function furry(x: number, span = 110): EnemySpawn {
+  return { kind: "furry", x, patrolStart: x - span, patrolEnd: x + span };
+}
+
+function winged(x: number, y = 260, span = 150): EnemySpawn {
+  return { kind: "winged", x, y, patrolStart: x - span, patrolEnd: x + span };
+}
+
+const MUSHROOM_Y = GROUND_Y - 26;
+
+/**
+ * Sunny Forest — 10 hand-built scenes, each with its own little twist.
+ * Scene 10 is the Furry King arena.
+ */
+const FOREST_SCENES: SceneDef[] = [
+  {
+    // 1. Warmup: a couple of monsters, wide platforms.
+    name: `Scene 1 — ${FOREST_SCENE_NAMES[0]}`,
+    width: 1800,
+    platforms: [plat(320, 430, 180), plat(680, 360, 170), plat(1080, 420, 180), plat(1420, 350, 160)],
+    enemies: [furry(700), furry(1250)],
+    chests: [chest(380, "food"), chest(1200, "bandage")],
+    hint: "A gentle walk — watch for monsters!",
+  },
+  {
+    // 2. Jumping scene: many platforms, barely any monsters.
+    name: `Scene 2 — ${FOREST_SCENE_NAMES[1]}`,
+    width: 2200,
+    platforms: [
+      plat(260, 430, 150), plat(480, 350, 140), plat(700, 430, 150), plat(920, 350, 140),
+      plat(1140, 430, 150), plat(1360, 350, 140), plat(1580, 430, 150), plat(1800, 350, 140),
+    ],
+    enemies: [furry(1050)],
+    chests: [chest(520, "food", 350 - 24), chest(1640, "food", 430 - 24)],
+    hint: "Hop across the high platforms — food waits up top!",
+  },
+  {
+    // 3. Monster gauntlet: flat ground, a long patrol line.
+    name: `Scene 3 — ${FOREST_SCENE_NAMES[2]}`,
+    width: 2500,
+    platforms: [plat(900, 400, 160), plat(1700, 400, 160)],
+    enemies: [furry(480), furry(860), furry(1240), furry(1620), furry(2000)],
+    chests: [chest(320, "bandage"), chest(1500, "food")],
+    hint: "A whole pack blocks the path — fight or sprint through!",
+  },
+  {
+    // 4. Wind scene: gusts push the knight backwards.
+    name: `Scene 4 — ${FOREST_SCENE_NAMES[3]}`,
+    width: 2300,
+    wind: true,
+    platforms: [plat(340, 420, 150), plat(620, 340, 140), plat(980, 420, 150), plat(1340, 340, 140), plat(1700, 420, 150)],
+    enemies: [furry(800), furry(1500)],
+    chests: [chest(400, "food"), chest(1400, "bandage", 340 - 24)],
+    hint: "Gusts of wind push you back — move between gusts!",
+  },
+  {
+    // 5. Moving platforms: ride them to the high ledges.
+    name: `Scene 5 — ${FOREST_SCENE_NAMES[4]}`,
+    width: 2500,
+    platforms: [
+      plat(300, 420, 150),
+      mplat(620, 400, 130, "y", 70, 0.02),
+      plat(900, 300, 150),
+      mplat(1250, 400, 130, "x", 90, 0.018),
+      plat(1600, 420, 150),
+      mplat(1950, 390, 130, "y", 80, 0.022),
+    ],
+    enemies: [furry(1050)],
+    chests: [chest(950, "food", 300 - 24), chest(1650, "bandage", 420 - 24)],
+    hint: "Ride the moving platforms!",
+  },
+  {
+    // 6. Hunger challenge: long walk, no food until the very end.
+    name: `Scene 6 — ${FOREST_SCENE_NAMES[5]}`,
+    width: 2900,
+    platforms: [plat(500, 420, 160), plat(1100, 360, 150), plat(1700, 420, 160), plat(2300, 360, 150)],
+    enemies: [furry(800), furry(1500), furry(2200)],
+    chests: [chest(380, "bandage"), chest(2650, "food")],
+    hint: "No food until the very end — save your sprint!",
+  },
+  {
+    // 7. Bounce mushrooms: launch up to tall ledges (exempt from reachability clamp).
+    name: `Scene 7 — ${FOREST_SCENE_NAMES[6]}`,
+    width: 2400,
+    platforms: [
+      plat(560, 250, 150), plat(900, 430, 150), plat(1180, 220, 150), plat(1560, 430, 150), plat(1840, 250, 150),
+    ],
+    bounces: [
+      { x: 380, y: MUSHROOM_Y }, { x: 1020, y: MUSHROOM_Y }, { x: 1700, y: MUSHROOM_Y },
+    ],
+    enemies: [furry(700), furry(1400)],
+    chests: [chest(600, "food", 250 - 24), chest(1220, "firstaid", 220 - 24), chest(1880, "food", 250 - 24)],
+    hint: "Bounce on the big mushrooms to reach the high ledges!",
+  },
+  {
+    // 8. Air attack: winged monsters swoop above the path.
+    name: `Scene 8 — ${FOREST_SCENE_NAMES[7]}`,
+    width: 2400,
+    platforms: [plat(420, 420, 160), plat(1020, 360, 150), plat(1620, 420, 160)],
+    enemies: [winged(500), winged(1000, 230), winged(1500), winged(2000, 240), furry(1300)],
+    chests: [chest(360, "arrows"), chest(1400, "food")],
+    hint: "Winged beasts circle overhead — poke up or shoot!",
+  },
+  {
+    // 9. Mixed review: wind + a moving platform + a mushroom + monsters.
+    name: `Scene 9 — ${FOREST_SCENE_NAMES[8]}`,
+    width: 2700,
+    wind: true,
+    platforms: [
+      plat(360, 420, 150),
+      mplat(760, 390, 130, "y", 70, 0.02),
+      plat(1150, 300, 150),
+      plat(1500, 420, 150),
+      plat(2000, 360, 150),
+    ],
+    bounces: [{ x: 1040, y: MUSHROOM_Y }],
+    enemies: [furry(600), furry(1350), furry(1900), winged(2300, 250)],
+    chests: [chest(320, "food"), chest(1200, "bandage", 300 - 24), chest(2200, "food")],
+    hint: "A bit of everything — stay sharp!",
+  },
+  {
+    // 10. Boss arena (unchanged).
+    name: `Scene 10 — ${FOREST_SCENE_NAMES[9]}`,
+    width: 2200,
+    platforms: [plat(320, 430, 170), plat(700, 350, 150)],
+    enemies: [{ kind: "furry", x: 620, patrolStart: 500, patrolEnd: 880 }],
+    chests: [chest(300, "firstaid"), chest(820, "food")],
+    boss: true,
+    hint: "The Furry King awaits — grab the TNT!",
+  },
+];
 
 
 export const LEVELS: LevelDef[] = [
@@ -340,7 +448,10 @@ function makeReachable(list: Platform[]): Platform[] {
 
 for (const level of LEVELS) {
   level.platforms = makeReachable(level.platforms);
-  for (const scene of level.scenes ?? []) scene.platforms = makeReachable(scene.platforms);
+  for (const scene of level.scenes ?? []) {
+    // Scenes with bounce mushrooms intentionally have taller ledges.
+    if (!scene.bounces?.length) scene.platforms = makeReachable(scene.platforms);
+  }
 }
 
 export const FINAL_LEVEL_INDEX = LEVELS.length - 1;

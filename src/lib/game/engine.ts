@@ -51,6 +51,10 @@ export const GRAVITY = 0.6;
 export const WALK_SPEED = 4;
 export const SPRINT_SPEED = 7.5;
 export const JUMP_FORCE = -12;
+/** Mushroom launch — much stronger than a jump. */
+export const BOUNCE_FORCE = -19;
+/** Sideways push per frame while a wind gust blows. */
+export const WIND_PUSH = 2.4;
 export const PLAYER_WIDTH = 32;
 export const PLAYER_HEIGHT = 48;
 
@@ -270,6 +274,12 @@ function baseState(carry: Player, progress: Progress): GameState {
     mapCursor: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
     minigame: null,
     bestScores: progress.bestScores,
+    wind: false,
+    windTimer: 0,
+    windBlowing: false,
+    windDir: -1,
+    bounces: [],
+    sceneHint: "",
   };
 }
 
@@ -314,11 +324,24 @@ export function loadLevel(
   state.bossArenaX = arenaXForWidth(width);
   state.swim = level.swim === true;
   state.biome = level.biome;
+  state.wind = scene?.wind === true;
+  state.windTimer = 0;
+  state.windBlowing = false;
+  state.bounces = (scene?.bounces ?? []).map((b) => ({ ...b }));
+  state.sceneHint = scene?.hint ?? "";
   state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
   state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
     { x: 0, y: GROUND_Y, width, height: 80 },
-    ...(scene ? scene.platforms : level.platforms).map((p: Platform) => ({ ...p })),
+    ...(scene ? scene.platforms : level.platforms).map((p: Platform) => {
+      const cp = { ...p };
+      if (cp.axis) {
+        cp.baseX = cp.x;
+        cp.baseY = cp.y;
+        cp.moveT = 0;
+      }
+      return cp;
+    }),
   ];
   state.pails = hasBoss ? levelPails(state.bossArenaX) : [];
   state.cage =
@@ -501,6 +524,36 @@ function startDialog(state: GameState, speaker: string, lines: string[]) {
 
 /* ---------------- Player ---------------- */
 
+/** Oscillate moving platforms and carry the knight standing on them. */
+function updateMovingPlatforms(state: GameState) {
+  if (state.topDown || state.mode !== "playing") return;
+  const p = state.player;
+  for (const platform of state.platforms) {
+    if (!platform.axis || !platform.range || !platform.speed) continue;
+    platform.moveT = (platform.moveT ?? 0) + 1;
+    const bx = platform.baseX ?? platform.x;
+    const by = platform.baseY ?? platform.y;
+    const offset = Math.sin(platform.moveT * platform.speed) * platform.range;
+    const nx = platform.axis === "x" ? bx + offset : bx;
+    const ny = platform.axis === "y" ? by + offset : by;
+    const dx = nx - platform.x;
+    const dy = ny - platform.y;
+    // Carry the knight if he was standing on the platform's previous spot.
+    const oldTop = platform.y;
+    if (
+      p.onGround &&
+      Math.abs(p.y + p.height - oldTop) < 6 &&
+      p.x + p.width > platform.x &&
+      p.x < platform.x + platform.width
+    ) {
+      p.x += dx;
+      p.y += dy;
+    }
+    platform.x = nx;
+    platform.y = ny;
+  }
+}
+
 function updatePlayer(state: GameState) {
   const p = state.player;
   const keys = state.keys;
@@ -530,6 +583,34 @@ function updatePlayer(state: GameState) {
   if (sprinting && !swim && (moveLeft || moveRight)) {
     p.hunger = Math.max(0, p.hunger - 0.008);
     if (p.hunger <= 0) showMessage(state, "Too hungry to sprint!");
+  }
+
+  // Wind gusts: ~4s calm, then a ~2s gust that pushes the knight back.
+  if (state.wind && !swim) {
+    state.windTimer++;
+    const cycle = state.windTimer % 360;
+    const blowing = cycle >= 240;
+    if (blowing && !state.windBlowing) {
+      state.windBlowing = true;
+      sfx.gust();
+      showMessage(state, "A gust of wind!", 90);
+    }
+    if (!blowing) state.windBlowing = false;
+    if (state.windBlowing) {
+      p.x += WIND_PUSH * state.windDir;
+      if (Math.random() < 0.35) {
+        state.particles.push({
+          x: state.cameraX + CANVAS_WIDTH + 10,
+          y: 90 + Math.random() * 380,
+          vx: state.windDir * (5 + Math.random() * 3),
+          vy: 0.6 - Math.random() * 1.2,
+          life: 90,
+          maxLife: 90,
+          color: Math.random() < 0.5 ? "#4ade80" : "#a3e635",
+          size: 3,
+        });
+      }
+    }
   }
 
   if (swim) {
@@ -606,6 +687,29 @@ function updatePlayer(state: GameState) {
         p.x = platform.x - p.width;
       } else {
         p.x = platform.x + platform.width;
+      }
+    }
+  }
+
+  // Bouncy mushrooms: landing on one launches the knight high up.
+  for (const b of state.bounces) {
+    const cap = { x: b.x, y: b.y, width: 56, height: 26 };
+    if (p.vy >= 0 && rectsOverlap(p, cap) && p.y + p.height - p.vy <= b.y + 10) {
+      p.y = b.y - p.height;
+      p.vy = BOUNCE_FORCE;
+      p.onGround = false;
+      sfx.bounce();
+      for (let i = 0; i < 8; i++) {
+        state.particles.push({
+          x: b.x + 28,
+          y: b.y + 6,
+          vx: (Math.random() - 0.5) * 4,
+          vy: -Math.random() * 3,
+          life: 30,
+          maxLife: 30,
+          color: "#fca5a5",
+          size: 3,
+        });
       }
     }
   }
@@ -1657,6 +1761,7 @@ export function updateGame(state: GameState) {
     return;
   }
 
+  updateMovingPlatforms(state);
   updatePlayer(state);
   if (state.mode !== "playing") return;
   updateEnemies(state);
@@ -1821,6 +1926,32 @@ function drawPlatform(ctx: CanvasRenderingContext2D, platform: Platform, cameraX
   ctx.fillRect(platform.x - cameraX, platform.y, platform.width, platform.height);
   ctx.fillStyle = top;
   ctx.fillRect(platform.x - cameraX, platform.y, platform.width, 6);
+}
+
+/** A big red bouncy mushroom. */
+function drawMushroom(ctx: CanvasRenderingContext2D, b: { x: number; y: number }, cameraX: number, now: number) {
+  const sx = b.x - cameraX;
+  if (sx < -70 || sx > CANVAS_WIDTH + 70) return;
+  const squish = 1 + Math.sin(now / 300 + b.x) * 0.04;
+  // Stem
+  ctx.fillStyle = "#fde68a";
+  ctx.fillRect(sx + 18, b.y + 12, 20, 14);
+  // Cap
+  ctx.save();
+  ctx.translate(sx + 28, b.y + 14);
+  ctx.scale(1, squish);
+  ctx.fillStyle = "#dc2626";
+  ctx.beginPath();
+  ctx.arc(0, 0, 28, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#fecaca";
+  for (const [dx, dy, r] of [[-14, -8, 4], [0, -16, 5], [14, -8, 4]] as const) {
+    ctx.beginPath();
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "night" | "dead" | "jungle") {
@@ -2897,6 +3028,13 @@ function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.font = "bold 20px sans-serif";
   ctx.fillText(`Boss: ${BOSSES[level.boss].name}`, CANVAS_WIDTH / 2, 410);
 
+  const sceneHint = level.scenes?.[state.selectedScene]?.hint;
+  if (sceneHint) {
+    ctx.fillStyle = "#fde68a";
+    ctx.font = "italic 18px sans-serif";
+    ctx.fillText(sceneHint, CANVAS_WIDTH / 2, 442);
+  }
+
   const pulse = 0.6 + Math.abs(Math.sin(Date.now() / 400)) * 0.4;
   ctx.globalAlpha = pulse;
   ctx.fillStyle = "#22c55e";
@@ -3521,10 +3659,13 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     drawGroundStrip(ctx, state);
 
     for (const platform of state.platforms) {
-      if (platform.y === GROUND_Y) continue;
+      if (platform.y === GROUND_Y && !platform.axis) continue;
       if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
       drawPlatform(ctx, platform, state.cameraX, state.biome);
     }
+
+    const now = Date.now();
+    for (const b of state.bounces) drawMushroom(ctx, b, state.cameraX, now);
 
     for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
     for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);

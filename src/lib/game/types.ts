@@ -147,6 +147,16 @@ export type GameState = {
 
   minigame: MinigameState | null;
   bestScores: Record<string, number>;
+
+  /** This scene has periodic wind gusts that push the knight. */
+  wind: boolean;
+  windTimer: number;
+  windBlowing: boolean;
+  windDir: 1 | -1;
+  /** Bouncy mushrooms in this scene. */
+  bounces: Bounce[];
+  /** One-line hint shown on the scene start card. */
+  sceneHint: string;
 };
 
 export type FoodKind = "bread" | "apple" | "cheese" | "chicken" | "berries";
@@ -249,7 +259,18 @@ export type Platform = {
   y: number;
   width: number;
   height: number;
+  /** Moving platform: oscillates around its spawn point on this axis. */
+  axis?: "x" | "y";
+  range?: number;
+  speed?: number;
+  /** Runtime oscillation state (set when the level loads). */
+  baseX?: number;
+  baseY?: number;
+  moveT?: number;
 };
+
+/** A bouncy mushroom: landing on it launches the knight high up. */
+export type Bounce = { x: number; y: number };
 
 export type Particle = {
   x: number;
