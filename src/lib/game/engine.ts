@@ -2377,6 +2377,87 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillStyle = fog;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
+
+  drawWeather(ctx, state, now);
+}
+
+/** Per-scene weather: dark clouds, rain, mist banks and lightning. */
+function drawWeather(ctx: CanvasRenderingContext2D, state: GameState, now: number) {
+  if (state.scene !== "level" || state.sky === "clear") return;
+  const sky = state.sky;
+
+  if (sky === "rain" || sky === "storm" || sky === "grey") {
+    ctx.fillStyle = sky === "storm" ? "rgba(15,23,42,0.75)" : "rgba(71,85,105,0.55)";
+    for (let i = 0; i < 9; i++) {
+      const cx = ((i * 330 - state.cameraX * 0.25) % 1800) - 200;
+      const cy = 70 + (i % 3) * 46;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 92, 30, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 70, cy + 8, 66, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (sky === "rain" || sky === "storm") {
+    ctx.strokeStyle = "rgba(191,219,254,0.55)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 90; i++) {
+      const rx = (i * 149 - state.cameraX * 0.6) % CANVAS_WIDTH;
+      const ry = (now / 2 + i * 83) % CANVAS_HEIGHT;
+      const x = ((rx + CANVAS_WIDTH) % CANVAS_WIDTH) | 0;
+      ctx.beginPath();
+      ctx.moveTo(x, ry);
+      ctx.lineTo(x - 5, ry + 16);
+      ctx.stroke();
+    }
+  }
+
+  if (sky === "storm") {
+    // Occasional lightning flash.
+    const flash = (now % 4300) < 110;
+    if (flash) {
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+  }
+
+  if (sky === "mist" || sky === "dusk") {
+    ctx.fillStyle = sky === "mist" ? "rgba(241,245,249,0.5)" : "rgba(30,27,75,0.35)";
+    for (let i = 0; i < 6; i++) {
+      const mx = ((i * 300 - state.cameraX * 0.15 - now / 90) % 1900) - 200;
+      ctx.beginPath();
+      ctx.ellipse(mx, GROUND_Y - 60 - (i % 3) * 70, 210, 40, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+/** Thick mist: only a small circle around the knight stays clear. */
+function drawFogOverlay(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!state.fog) return;
+  const cx = state.player.x - state.cameraX + state.player.width / 2;
+  const cy = state.player.y + state.player.height / 2;
+  const g = ctx.createRadialGradient(cx, cy, 60, cx, cy, 330);
+  g.addColorStop(0, "rgba(226,232,240,0)");
+  g.addColorStop(0.6, "rgba(226,232,240,0.55)");
+  g.addColorStop(1, "rgba(226,232,240,0.92)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+/** Acorns tumbling down from the treetops. */
+function drawFallers(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const f of state.fallers) {
+    const x = f.x - state.cameraX;
+    if (x < -30 || x > CANVAS_WIDTH + 30) continue;
+    ctx.fillStyle = "#92400e";
+    ctx.beginPath();
+    ctx.ellipse(x, f.y, 8, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#451a03";
+    ctx.fillRect(x - 8, f.y - 11, 16, 7);
+    ctx.fillRect(x - 1, f.y - 17, 3, 6);
+  }
 }
 
 function drawGroundStrip(ctx: CanvasRenderingContext2D, state: GameState) {
