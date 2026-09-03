@@ -1679,7 +1679,7 @@ function updateCutscene(state: GameState) {
 function musicForState(state: GameState): MusicTrack {
   if (!state.started) return null;
   if (state.mode === "gameover") return null;
-  if (state.mode === "intro") return "creepy";
+  if (state.mode === "intro") return "storybook";
   if (state.mode === "won" || (state.cage?.open ?? false)) return "beautiful";
   if (state.boss) return "rock";
   if (state.biome === "night" || state.biome === "dark" || state.biome === "mountain") return "creepy";
