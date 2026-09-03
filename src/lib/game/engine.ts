@@ -1647,7 +1647,7 @@ function updateIntro(state: GameState) {
   const phase = Math.floor(state.cutsceneTimer / 190);
   if (phase !== state.cutscenePhase) {
     sfx.pageTurn();
-    if (phase === 4) sfx.portalSeal();
+    if (phase === VILLAGE_PAGES + 4) sfx.portalSeal();
   }
   state.cutscenePhase = phase;
   if (state.cutscenePhase >= INTRO_LINES.length) endIntro(state);
