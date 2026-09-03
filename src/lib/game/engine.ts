@@ -1928,6 +1928,32 @@ function drawPlatform(ctx: CanvasRenderingContext2D, platform: Platform, cameraX
   ctx.fillRect(platform.x - cameraX, platform.y, platform.width, 6);
 }
 
+/** A big red bouncy mushroom. */
+function drawMushroom(ctx: CanvasRenderingContext2D, b: { x: number; y: number }, cameraX: number, now: number) {
+  const sx = b.x - cameraX;
+  if (sx < -70 || sx > CANVAS_WIDTH + 70) return;
+  const squish = 1 + Math.sin(now / 300 + b.x) * 0.04;
+  // Stem
+  ctx.fillStyle = "#fde68a";
+  ctx.fillRect(sx + 18, b.y + 12, 20, 14);
+  // Cap
+  ctx.save();
+  ctx.translate(sx + 28, b.y + 14);
+  ctx.scale(1, squish);
+  ctx.fillStyle = "#dc2626";
+  ctx.beginPath();
+  ctx.arc(0, 0, 28, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#fecaca";
+  for (const [dx, dy, r] of [[-14, -8, 4], [0, -16, 5], [14, -8, 4]] as const) {
+    ctx.beginPath();
+    ctx.arc(dx, dy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawTree(ctx: CanvasRenderingContext2D, x: number, style: "green" | "night" | "dead" | "jungle") {
   ctx.fillStyle = style === "green" || style === "jungle" ? "#7c3f16" : "#1c1917";
   ctx.fillRect(x, GROUND_Y - 90, 14, 90);
@@ -3002,6 +3028,13 @@ function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.font = "bold 20px sans-serif";
   ctx.fillText(`Boss: ${BOSSES[level.boss].name}`, CANVAS_WIDTH / 2, 410);
 
+  const sceneHint = level.scenes?.[state.selectedScene]?.hint;
+  if (sceneHint) {
+    ctx.fillStyle = "#fde68a";
+    ctx.font = "italic 18px sans-serif";
+    ctx.fillText(sceneHint, CANVAS_WIDTH / 2, 442);
+  }
+
   const pulse = 0.6 + Math.abs(Math.sin(Date.now() / 400)) * 0.4;
   ctx.globalAlpha = pulse;
   ctx.fillStyle = "#22c55e";
@@ -3626,10 +3659,13 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     drawGroundStrip(ctx, state);
 
     for (const platform of state.platforms) {
-      if (platform.y === GROUND_Y) continue;
+      if (platform.y === GROUND_Y && !platform.axis) continue;
       if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
       drawPlatform(ctx, platform, state.cameraX, state.biome);
     }
+
+    const now = Date.now();
+    for (const b of state.bounces) drawMushroom(ctx, b, state.cameraX, now);
 
     for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
     for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
