@@ -156,10 +156,11 @@ export const sfx = {
       delay: notes.length * 0.15,
     });
   },
-  /** Soft paper rustle as the storybook turns a page. */
+  /** Gentle harp pluck as the storybook turns a page. */
   pageTurn() {
-    noise(0.28, "highpass", 1800, 0.14, 0, 4000);
-    noise(0.18, "bandpass", 2600, 0.08, 0.12);
+    tone({ type: "triangle", from: 784, duration: 0.5, volume: 0.1 });
+    tone({ type: "sine", from: 1175, duration: 0.4, volume: 0.06, delay: 0.06 });
+    noise(0.14, "lowpass", 900, 0.03, 0.02);
   },
   /** Wizard magic snapping the portal shut. */
   portalSeal() {
