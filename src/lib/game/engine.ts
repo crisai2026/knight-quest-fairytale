@@ -14,6 +14,7 @@ import type {
   Npc,
   FoodKind,
   FoodDrop,
+  FlagDrop,
 } from "./types";
 import {
   LEVELS,
@@ -213,6 +214,9 @@ function baseState(carry: Player, progress: Progress): GameState {
     tntList: [],
     keyDrop: null,
     flagDrop: null,
+    celebrateTimer: 0,
+    celebrateBig: false,
+    celebrateNext: null,
     cage: null,
     message: "",
     messageTimer: 0,
@@ -1189,21 +1193,73 @@ function updateFlagDrop(state: GameState) {
     sfx.flagRaise();
     spawnParticle(state, f.x, f.y - FLAG_POLE_HEIGHT, f.color, 26, 5);
     spawnParticle(state, f.x, f.y - 30, "#ffffff", 16, 4);
-    if (f.isSceneExit) {
-      advanceScene(state);
-      return;
-    }
-    state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
-    state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
-    saveProgress(state);
-    state.mode = "levelcomplete";
-    state.levelCompleteTimer = 0;
+    startCelebration(state, f);
   }
+}
+
+const CELEBRATE_FRAMES = 190;
+const CONFETTI_COLORS = ["#facc15", "#f472b6", "#4ade80", "#38bdf8", "#f97316", "#ffffff"];
+
+/** Mario-style flag celebration: fanfare, victory hops and confetti. */
+function startCelebration(state: GameState, f: FlagDrop) {
+  state.celebrateTimer = 1;
+  state.celebrateBig = f.big;
+  state.celebrateNext = f.isSceneExit ? "scene" : "chapter";
+  state.player.x = f.x - state.player.width / 2;
+  state.player.vx = 0;
+  state.player.facing = "right";
+  state.keys = {};
+  playMusic(null);
+  sfx.victoryFanfare(f.big);
+}
+
+function updateCelebration(state: GameState) {
+  const p = state.player;
+  const f = state.flagDrop;
+  state.celebrateTimer++;
+  const t = state.celebrateTimer;
+
+  // Cloth slides down the pole over the first half-second, then the knight hops.
+  if (t > 40) {
+    if (p.onGround && (t - 40) % 42 === 0) p.vy = -9;
+    p.vy += GRAVITY;
+    p.y += p.vy;
+    if (p.y + p.height >= GROUND_Y) {
+      p.y = GROUND_Y - p.height;
+      p.vy = 0;
+      p.onGround = true;
+    } else {
+      p.onGround = false;
+    }
+  }
+
+  if (t % 4 === 0 && f) {
+    const color = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)]!;
+    spawnParticle(state, f.x + (Math.random() - 0.5) * 140, f.y - 150 - Math.random() * 60, color, 3, 3);
+  }
+
+  updateParticles(state);
+  updateCamera(state);
+
+  if (t < CELEBRATE_FRAMES) return;
+
+  const next = state.celebrateNext;
+  state.celebrateTimer = 0;
+  state.celebrateNext = null;
+  if (next === "scene") {
+    advanceScene(state);
+    return;
+  }
+  state.unlockedLevels = Math.max(state.unlockedLevels, state.levelIndex + 2);
+  state.selectedLevel = Math.min(state.unlockedLevels - 1, LEVELS.length - 1);
+  saveProgress(state);
+  state.mode = "levelcomplete";
+  state.levelCompleteTimer = 0;
 }
 
 function drawFlagDrop(ctx: CanvasRenderingContext2D, state: GameState) {
   const f = state.flagDrop;
-  if (!f || f.collected) return;
+  if (!f || (f.collected && state.celebrateTimer <= 0)) return;
   const x = f.x - state.cameraX;
   if (x < -80 || x > CANVAS_WIDTH + 80) return;
   const scale = f.big ? 1.5 : 1;
@@ -1226,16 +1282,19 @@ function drawFlagDrop(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.arc(x, topY - 3 * scale, 5 * scale, 0, Math.PI * 2);
   ctx.fill();
 
+  // Once taken, the cloth slides down the pole like a Mario flagpole.
+  const slide = f.collected ? Math.min(1, state.celebrateTimer / 40) * (poleH - 40 * scale) : 0;
+  const clothY = topY + slide;
   ctx.fillStyle = f.big ? "#fbbf24" : f.color;
   ctx.beginPath();
-  ctx.moveTo(x + 3, topY + 4);
+  ctx.moveTo(x + 3, clothY + 4);
   for (let i = 0; i <= 8; i++) {
     const t = i / 8;
-    ctx.lineTo(x + 3 + t * cloth, topY + 4 + Math.sin(f.wave + t * 3) * 4 * scale);
+    ctx.lineTo(x + 3 + t * cloth, clothY + 4 + Math.sin(f.wave + t * 3) * 4 * scale);
   }
   for (let i = 8; i >= 0; i--) {
     const t = i / 8;
-    ctx.lineTo(x + 3 + t * cloth, topY + 34 * scale + Math.sin(f.wave + t * 3) * 4 * scale);
+    ctx.lineTo(x + 3 + t * cloth, clothY + 34 * scale + Math.sin(f.wave + t * 3) * 4 * scale);
   }
   ctx.closePath();
   ctx.fill();
@@ -1334,13 +1393,19 @@ const INTRO_LINES = [
   "A quiet morning in the village...",
   "A shadow falls: the Dragon lands, and beside him stands Zarvok the Wizard.",
   "Dragon: \"Minions! Take the princess to my castle!\"",
-  "The monsters carry the princess away into the sky.",
+  "The monsters march the princess away, straight into a dark portal.",
+  "Zarvok seals the portal with his magic, and the valley falls silent.",
   "Mayor Bumbleworth: \"Brave knight — only you can bring her home!\"",
 ];
 
 function updateIntro(state: GameState) {
   state.cutsceneTimer++;
-  state.cutscenePhase = Math.floor(state.cutsceneTimer / 190);
+  const phase = Math.floor(state.cutsceneTimer / 190);
+  if (phase !== state.cutscenePhase) {
+    sfx.pageTurn();
+    if (phase === 4) sfx.portalSeal();
+  }
+  state.cutscenePhase = phase;
   if (state.cutscenePhase >= INTRO_LINES.length) endIntro(state);
 }
 
@@ -1411,7 +1476,7 @@ function buyItem(state: GameState, key: string) {
 /* ---------------- Main loop ---------------- */
 
 export function updateGame(state: GameState) {
-  playMusic(musicForState(state));
+  playMusic(state.celebrateTimer > 0 ? null : musicForState(state));
 
   if (state.mode === "won" || state.mode === "gameover") return;
 
@@ -1450,6 +1515,11 @@ export function updateGame(state: GameState) {
   if (state.mode === "cutscene") {
     updateCutscene(state);
     updateParticles(state);
+    return;
+  }
+
+  if (state.celebrateTimer > 0) {
+    updateCelebration(state);
     return;
   }
 
@@ -2724,37 +2794,107 @@ function drawLevelStart(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.textAlign = "left";
 }
 
+const MAP_TILE_W = 124;
+const MAP_TILE_H = 128;
+
+function mapTileCenter(i: number) {
+  const col = i % 5;
+  const row = Math.floor(i / 5);
+  return { cx: 120 + col * 145, cy: 268 + row * 158 };
+}
+
+/** Canvas click on the world map: pick a level tile. Returns true if handled. */
+export function handleMapClick(state: GameState, x: number, y: number): boolean {
+  if (state.mode !== "map") return false;
+  for (let i = 0; i < LEVELS.length; i++) {
+    const { cx, cy } = mapTileCenter(i);
+    if (Math.abs(x - cx) <= MAP_TILE_W / 2 && Math.abs(y - cy) <= MAP_TILE_H / 2) {
+      state.mapCursor = i;
+      if (i < state.unlockedLevels) {
+        state.selectedLevel = i;
+        sfx.buy();
+        state.mode = "playing";
+        showMessage(state, `Portal set to ${LEVELS[i]!.short}. Walk right into it!`, 200);
+      } else {
+        sfx.hurt();
+        showMessage(state, "That chapter is still locked.", 120);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillStyle = "rgba(2,6,23,0.92)";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   ctx.fillStyle = "#facc15";
-  ctx.font = "bold 24px sans-serif";
-  ctx.fillText("World Map", 40, 52);
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText("World Map", 30, 40);
   ctx.fillStyle = "#e2e8f0";
+  ctx.font = "12px sans-serif";
+  ctx.fillText("Click a chapter, or arrows + E • Esc to close", 30, 60);
+
+  // Top band: portrait of the boss guarding the chapter you are pointing at.
+  const sel = LEVELS[state.mapCursor]!;
+  const selUnlocked = state.mapCursor < state.unlockedLevels;
+  const bandY = 76;
+  const bandH = 118;
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(30, bandY, CANVAS_WIDTH - 60, bandH);
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(30, bandY, CANVAS_WIDTH - 60, bandH);
+
+  const faceX = 110;
+  const faceY = bandY + bandH / 2;
+  if (selUnlocked) {
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = "#facc15";
+    ctx.beginPath();
+    ctx.arc(faceX, faceY, 52, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    drawBossFace(ctx, sel.boss, faceX, faceY, 44);
+  } else {
+    ctx.fillStyle = "#1e293b";
+    ctx.beginPath();
+    ctx.arc(faceX, faceY, 44, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#475569";
+    ctx.font = "bold 40px sans-serif";
+    ctx.fillText("?", faceX - 12, faceY + 14);
+  }
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText(`${state.mapCursor + 1}. ${sel.name}`, 180, bandY + 44);
+  ctx.fillStyle = selUnlocked ? "#fca5a5" : "#475569";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText(selUnlocked ? `Boss: ${BOSSES[sel.boss].name}` : "Locked — clear the chapter before it", 180, bandY + 72);
+  ctx.fillStyle = "#94a3b8";
   ctx.font = "13px sans-serif";
-  ctx.fillText("A/D or arrows to choose • E to set the portal • Esc to close", 40, 76);
+  ctx.fillText(selUnlocked ? "Press E or click again to set the portal" : "", 180, bandY + 96);
 
   LEVELS.forEach((level, i) => {
-    const col = i % 5;
-    const row = Math.floor(i / 5);
-    const cx = 120 + col * 145;
-    const cy = 190 + row * 190;
+    const { cx, cy } = mapTileCenter(i);
     const unlocked = i < state.unlockedLevels;
     const selected = i === state.mapCursor;
 
     ctx.fillStyle = unlocked ? "#1e293b" : "#0f172a";
-    ctx.fillRect(cx - 62, cy - 74, 124, 148);
+    ctx.fillRect(cx - MAP_TILE_W / 2, cy - MAP_TILE_H / 2, MAP_TILE_W, MAP_TILE_H);
     ctx.strokeStyle = selected ? "#facc15" : unlocked ? "#475569" : "#1e293b";
     ctx.lineWidth = selected ? 4 : 2;
-    ctx.strokeRect(cx - 62, cy - 74, 124, 148);
+    ctx.strokeRect(cx - MAP_TILE_W / 2, cy - MAP_TILE_H / 2, MAP_TILE_W, MAP_TILE_H);
 
     if (unlocked) {
-      drawBossFace(ctx, level.boss, cx, cy - 12, 30);
+      drawBossFace(ctx, level.boss, cx, cy - 18, 26);
     } else {
       ctx.fillStyle = "#334155";
-      ctx.fillRect(cx - 18, cy - 18, 36, 30);
+      ctx.fillRect(cx - 18, cy - 22, 36, 28);
       ctx.beginPath();
-      ctx.arc(cx, cy - 18, 14, Math.PI, 0);
+      ctx.arc(cx, cy - 22, 14, Math.PI, 0);
       ctx.lineWidth = 6;
       ctx.strokeStyle = "#334155";
       ctx.stroke();
@@ -2763,16 +2903,18 @@ function drawMapScreen(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillStyle = unlocked ? "#f8fafc" : "#475569";
     ctx.font = "bold 13px sans-serif";
     const t1 = `${i + 1}. ${level.short}`;
-    ctx.fillText(t1, cx - ctx.measureText(t1).width / 2, cy + 44);
+    ctx.fillText(t1, cx - ctx.measureText(t1).width / 2, cy + 32);
     ctx.font = "11px sans-serif";
     ctx.fillStyle = unlocked ? "#94a3b8" : "#334155";
     const t2 = unlocked ? BOSSES[level.boss].name : "Locked";
-    ctx.fillText(t2, cx - ctx.measureText(t2).width / 2, cy + 62);
+    ctx.fillText(t2, cx - ctx.measureText(t2).width / 2, cy + 50);
   });
 }
 
-function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
+function drawIntroScene(ctx: CanvasRenderingContext2D, state: GameState) {
   const phase = state.cutscenePhase;
+  const t = state.cutsceneTimer;
+
   const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
   grad.addColorStop(0, phase === 0 ? "#7dd3fc" : "#450a0a");
   grad.addColorStop(1, phase === 0 ? "#bbf7d0" : "#1e1b4b");
@@ -2783,7 +2925,38 @@ function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
   for (let i = 0; i < 4; i++) drawHouse(ctx, 60 + i * 200);
 
-  const t = state.cutsceneTimer;
+  // The portal the monsters march the princess into.
+  const portalX = 700;
+  if (phase >= 2) {
+    const sealed = phase >= 4;
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    const pg = ctx.createRadialGradient(portalX, GROUND_Y - 70, 6, portalX, GROUND_Y - 70, 62);
+    pg.addColorStop(0, sealed ? "#1e1b4b" : "#a855f7");
+    pg.addColorStop(1, sealed ? "#4c1d95" : "#312e81");
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.ellipse(portalX, GROUND_Y - 70, 44, 70, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = sealed ? "#f472b6" : "#c4b5fd";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(portalX, GROUND_Y - 70, 44, 70, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (sealed) {
+      // Zarvok's seal: glowing runes and crossing chains of magic.
+      ctx.strokeStyle = "#f0abfc";
+      ctx.lineWidth = 4;
+      for (let i = 0; i < 3; i++) {
+        const a = t * 0.02 + (i * Math.PI) / 3;
+        ctx.beginPath();
+        ctx.moveTo(portalX - Math.cos(a) * 46, GROUND_Y - 70 - Math.sin(a) * 72);
+        ctx.lineTo(portalX + Math.cos(a) * 46, GROUND_Y - 70 + Math.sin(a) * 72);
+        ctx.stroke();
+      }
+    }
+  }
 
   if (phase >= 1) {
     // dragon and wizard arrive
@@ -2810,42 +2983,51 @@ function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillRect(108, 14, 12, 12);
     ctx.restore();
 
-    // wizard on the ground
+    // wizard on the ground (steps towards the portal to seal it)
+    const wx = phase >= 4 ? 560 : 250;
     ctx.fillStyle = "#4c1d95";
     ctx.beginPath();
-    ctx.moveTo(250, GROUND_Y - 90);
-    ctx.lineTo(290, GROUND_Y);
-    ctx.lineTo(210, GROUND_Y);
+    ctx.moveTo(wx, GROUND_Y - 90);
+    ctx.lineTo(wx + 40, GROUND_Y);
+    ctx.lineTo(wx - 40, GROUND_Y);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "#fcd7b6";
     ctx.beginPath();
-    ctx.arc(250, GROUND_Y - 96, 14, 0, Math.PI * 2);
+    ctx.arc(wx, GROUND_Y - 96, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#4c1d95";
     ctx.beginPath();
-    ctx.moveTo(228, GROUND_Y - 104);
-    ctx.lineTo(250, GROUND_Y - 160);
-    ctx.lineTo(272, GROUND_Y - 104);
+    ctx.moveTo(wx - 22, GROUND_Y - 104);
+    ctx.lineTo(wx, GROUND_Y - 160);
+    ctx.lineTo(wx + 22, GROUND_Y - 104);
     ctx.closePath();
     ctx.fill();
+    if (phase >= 4) {
+      // staff beam into the portal
+      ctx.strokeStyle = "#e879f9";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(wx + 24, GROUND_Y - 110);
+      ctx.lineTo(portalX - 20, GROUND_Y - 80);
+      ctx.stroke();
+    }
   }
 
   if (phase >= 2 && phase <= 3) {
-    // minions carrying the princess away
-    const px = 420 + (phase === 3 ? (t - 570) * 1.6 : 0);
-    const py = GROUND_Y - 120 - (phase === 3 ? (t - 570) * 0.5 : 0);
+    // the level monsters walk the princess along the ground to the portal
+    const walk = phase === 3 ? Math.min(220, (t - 570) * 1.4) : 0;
+    const px = 420 + walk;
+    const py = GROUND_Y - 60;
     ctx.fillStyle = "#ec4899";
     ctx.fillRect(px, py, 28, 40);
     ctx.fillStyle = "#fcd34d";
     ctx.fillRect(px + 4, py - 16, 20, 16);
-    // the actual level monsters carry her off: furry, tentacle and a winged one
     drawEnemy(ctx, introMinion("furry", px - 58, py + 6), 0);
     drawEnemy(ctx, introMinion("tentacle", px + 34, py + 6), 0);
-    drawEnemy(ctx, introMinion("winged", px - 6, py - 62, t * 0.1), 0);
   }
 
-  if (phase >= 4) {
+  if (phase >= 5) {
     // the mayor pleads with the knight
     ctx.fillStyle = "#7c3aed";
     ctx.fillRect(300, GROUND_Y - 46, 24, 46);
@@ -2858,16 +3040,110 @@ function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillStyle = "#cbd5e1";
     ctx.fillRect(424, GROUND_Y - 46, 24, 12);
   }
+}
 
-  const line = INTRO_LINES[Math.min(phase, INTRO_LINES.length - 1)]!;
-  ctx.fillStyle = "rgba(2,6,23,0.85)";
-  ctx.fillRect(0, CANVAS_HEIGHT - 120, CANVAS_WIDTH, 120);
-  ctx.fillStyle = "#f8fafc";
-  ctx.font = "bold 18px sans-serif";
-  ctx.fillText(line, 40, CANVAS_HEIGHT - 70);
-  ctx.fillStyle = "#94a3b8";
+/** The intro is told as a storybook: the tale on the left page, the scene on the right. */
+function drawIntro(ctx: CanvasRenderingContext2D, state: GameState) {
+  const t = state.cutsceneTimer;
+
+  // Table the book rests on.
+  const table = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+  table.addColorStop(0, "#3b2415");
+  table.addColorStop(1, "#1c1008");
+  ctx.fillStyle = table;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  const open = Math.min(1, t / 45);
+  const bookX = 26;
+  const bookY = 30;
+  const bookW = CANVAS_WIDTH - 52;
+  const bookH = CANVAS_HEIGHT - 60;
+
+  ctx.save();
+  ctx.translate(CANVAS_WIDTH / 2, 0);
+  ctx.scale(open, 1);
+  ctx.translate(-CANVAS_WIDTH / 2, 0);
+
+  // Leather cover and pages.
+  ctx.fillStyle = "#7f1d1d";
+  ctx.fillRect(bookX - 10, bookY - 10, bookW + 20, bookH + 20);
+  ctx.fillStyle = "#f5e8c8";
+  ctx.fillRect(bookX, bookY, bookW, bookH);
+  ctx.fillStyle = "#e6d3a8";
+  ctx.fillRect(CANVAS_WIDTH / 2 - 8, bookY, 16, bookH);
+  ctx.strokeStyle = "#c2a878";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bookX, bookY, bookW, bookH);
+
+  // Right page: the illustration.
+  const pad = 18;
+  const px = CANVAS_WIDTH / 2 + 14;
+  const py = bookY + pad;
+  const pw = bookX + bookW - pad - px;
+  const ph = bookH - pad * 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px, py, pw, ph);
+  ctx.clip();
+  ctx.fillStyle = "#1e1b4b";
+  ctx.fillRect(px, py, pw, ph);
+  const s = Math.min(pw / CANVAS_WIDTH, ph / CANVAS_HEIGHT);
+  ctx.translate(px + pw / 2, py + ph / 2);
+  ctx.scale(s, s);
+  ctx.translate(-CANVAS_WIDTH / 2, -CANVAS_HEIGHT / 2);
+  drawIntroScene(ctx, state);
+  ctx.restore();
+  ctx.strokeStyle = "#8b6f47";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(px, py, pw, ph);
+
+  // Left page: the tale so far.
+  ctx.fillStyle = "#6b3f18";
+  ctx.font = "bold 22px Georgia, serif";
+  ctx.fillText("The Tale of the Knight", bookX + 24, bookY + 52);
+  ctx.strokeStyle = "#c2a878";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(bookX + 24, bookY + 64);
+  ctx.lineTo(CANVAS_WIDTH / 2 - 24, bookY + 64);
+  ctx.stroke();
+
+  ctx.fillStyle = "#3f2d16";
+  ctx.font = "16px Georgia, serif";
+  let lineY = bookY + 100;
+  for (let i = 0; i <= state.cutscenePhase && i < INTRO_LINES.length; i++) {
+    const faded = i < state.cutscenePhase;
+    
+    ctx.fillStyle = faded ? "#8a7350" : "#3f2d16";
+    for (const row of wrapText(ctx, INTRO_LINES[i]!, CANVAS_WIDTH / 2 - bookX - 48)) {
+      ctx.fillText(row, bookX + 24, lineY);
+      lineY += 24;
+    }
+    lineY += 8;
+  }
+
+  ctx.restore();
+
+  ctx.fillStyle = "#e7c98f";
   ctx.font = "13px sans-serif";
-  ctx.fillText("Press any key (or tap) to skip", 40, CANVAS_HEIGHT - 34);
+  ctx.fillText("Press any key (or tap) to skip the story", 30, CANVAS_HEIGHT - 8);
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(" ");
+  const rows: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && current) {
+      rows.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) rows.push(current);
+  return rows;
 }
 
 function drawDialog(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -3039,6 +3315,13 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
       ? "Reach the flag at the end to enter the next scene!"
       : "Grab the big victory flag to finish the chapter!";
     ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 80);
+  }
+
+  if (state.celebrateTimer > 0) {
+    ctx.fillStyle = state.celebrateBig ? "#facc15" : "#4ade80";
+    ctx.font = "bold 30px sans-serif";
+    const t = state.celebrateBig ? "Chapter Clear!" : "Scene Clear!";
+    ctx.fillText(t, CANVAS_WIDTH / 2 - ctx.measureText(t).width / 2, 120);
   }
 
   if (state.mode === "levelcomplete") {

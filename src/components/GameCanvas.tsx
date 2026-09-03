@@ -5,6 +5,7 @@ import {
   createInitialState,
   handleKeyDown,
   confirmLevelStart,
+  handleMapClick,
   handleKeyUp,
   renderGame,
   updateGame,
@@ -278,9 +279,13 @@ export function GameCanvas() {
       width={CANVAS_WIDTH}
       height={CANVAS_HEIGHT}
       className="block cursor-pointer"
-      onClick={() => {
+      onClick={(e) => {
         unlockAudio();
         stateRef.current.started = true;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH;
+        const y = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT;
+        if (handleMapClick(stateRef.current, x, y)) return;
         confirmLevelStart(stateRef.current);
       }}
       style={{
