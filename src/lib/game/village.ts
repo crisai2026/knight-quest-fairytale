@@ -307,3 +307,166 @@ export function drawVillageProps(
   for (const it of items) it.draw(ctx);
   ctx.restore();
 }
+
+function isOuterWall(p: VillageProp) {
+  return (p.kind === "fence-h" && p.w >= VILLAGE_W) || (p.kind === "fence-v" && p.h >= VILLAGE_H);
+}
+
+export type Facing4 = "up" | "down" | "left" | "right";
+
+/** Knight seen from above. `t` drives the walk bob. */
+export function drawKnightTopDown(ctx: CanvasRenderingContext2D, x: number, y: number, facing: Facing4, t: number) {
+  const bob = Math.sin(t) * 2;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 18, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const cy = y - 24 + bob;
+  // body / cape
+  ctx.fillStyle = "#475569";
+  ctx.beginPath();
+  ctx.ellipse(x, cy + 8, 15, 13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#94a3b8";
+  ctx.beginPath();
+  ctx.ellipse(x, cy + 4, 13, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // shoulders
+  ctx.fillStyle = "#cbd5e1";
+  ctx.beginPath();
+  ctx.arc(x - 13, cy + 6, 6, 0, Math.PI * 2);
+  ctx.arc(x + 13, cy + 6, 6, 0, Math.PI * 2);
+  ctx.fill();
+  // helmet
+  ctx.fillStyle = "#e2e8f0";
+  ctx.beginPath();
+  ctx.arc(x, cy - 2, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#ef4444";
+  ctx.fillRect(x - 3, cy - 16, 6, 10);
+
+  // visor / face direction
+  ctx.fillStyle = "#0f172a";
+  if (facing === "down") ctx.fillRect(x - 7, cy - 1, 14, 5);
+  else if (facing === "left") ctx.fillRect(x - 11, cy - 2, 8, 5);
+  else if (facing === "right") ctx.fillRect(x + 3, cy - 2, 8, 5);
+
+  // sword
+  ctx.fillStyle = "#e5e7eb";
+  const sx = facing === "left" ? x - 20 : x + 16;
+  ctx.fillRect(sx, cy - 2, 4, 22);
+}
+
+export function drawVillagerTopDown(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+  name: string,
+  active: boolean,
+  hat?: "mayor" | "shop"
+) {
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 16, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const cy = y - 22;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, cy + 8, 14, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fcd7b6";
+  ctx.beginPath();
+  ctx.arc(x, cy - 2, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(x - 5, cy - 3, 3, 3);
+  ctx.fillRect(x + 2, cy - 3, 3, 3);
+  if (hat === "mayor") {
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(x - 11, cy - 13, 22, 5);
+    ctx.fillRect(x - 6, cy - 19, 12, 7);
+  } else if (hat === "shop") {
+    ctx.fillStyle = "#0f766e";
+    ctx.fillRect(x - 12, cy - 12, 24, 5);
+  }
+
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "11px sans-serif";
+  ctx.fillText(name, x - ctx.measureText(name).width / 2, cy - 26);
+
+  if (active) {
+    ctx.fillStyle = "#fef08a";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText("Press E", x - 24, cy - 42);
+  }
+}
+
+export function drawBoardTopDown(ctx: CanvasRenderingContext2D, unlocked: number, active: boolean) {
+  const { x, y } = BOARD_POS;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 56, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(x - 48, y - 14, 12, 16);
+  ctx.fillRect(x + 36, y - 14, 12, 16);
+  ctx.fillStyle = "#fef3c7";
+  ctx.fillRect(x - 56, y - 96, 112, 84);
+  ctx.strokeStyle = "#78350f";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(x - 56, y - 96, 112, 84);
+  ctx.fillStyle = "#78350f";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText("WORLD MAP", x - 43, y - 70);
+  ctx.font = "12px sans-serif";
+  ctx.fillText(`${unlocked}/10 unlocked`, x - 41, y - 48);
+  if (active) {
+    ctx.fillStyle = "#b45309";
+    ctx.font = "bold 13px sans-serif";
+    ctx.fillText("Press E", x - 24, y - 26);
+  }
+}
+
+/** Portal in the east clearing; `face` draws the boss head inside the ring. */
+export function drawPortalTopDown(
+  ctx: CanvasRenderingContext2D,
+  color: string,
+  label: string,
+  face: (ctx: CanvasRenderingContext2D, x: number, y: number, size: number) => void,
+  active: boolean
+) {
+  const { x, y } = PORTAL_POS;
+  const t = Date.now() / 400;
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 70, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(x - 62, y - 150, 16, 152);
+  ctx.fillRect(x + 46, y - 150, 16, 152);
+  ctx.fillRect(x - 62, y - 166, 124, 18);
+
+  const cy = y - 78;
+  for (let i = 4; i >= 0; i--) {
+    ctx.globalAlpha = 0.25 + i * 0.12;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, cy, 46 - i * 6 + Math.sin(t + i) * 3, 70 - i * 9 + Math.cos(t + i) * 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  face(ctx, x, cy, 24);
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText(label, x - ctx.measureText(label).width / 2, y - 176);
+  if (active) {
+    ctx.fillStyle = "#fef08a";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText("Press E to enter", x - 52, y + 30);
+  }
+}
