@@ -584,7 +584,19 @@ function updatePlayer(state: GameState) {
   const sprinting = keys["shift"] && p.hunger > 0;
   const speed = swim ? SWIM_SPEED : sprinting ? SPRINT_SPEED : WALK_SPEED;
 
-  if (moveLeft && !moveRight) {
+  if (state.slippery && !swim) {
+    // Wet mud: the knight builds up speed and slides to a stop.
+    if (moveLeft && !moveRight) {
+      p.vx = Math.max(-speed, p.vx - 0.4);
+      p.facing = "left";
+    } else if (moveRight && !moveLeft) {
+      p.vx = Math.min(speed, p.vx + 0.4);
+      p.facing = "right";
+    } else {
+      p.vx *= 0.96;
+      if (Math.abs(p.vx) < 0.15) p.vx = 0;
+    }
+  } else if (moveLeft && !moveRight) {
     p.vx = -speed;
     p.facing = "left";
   } else if (moveRight && !moveLeft) {
