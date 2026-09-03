@@ -51,6 +51,10 @@ export const GRAVITY = 0.6;
 export const WALK_SPEED = 4;
 export const SPRINT_SPEED = 7.5;
 export const JUMP_FORCE = -12;
+/** Mushroom launch — much stronger than a jump. */
+export const BOUNCE_FORCE = -19;
+/** Sideways push per frame while a wind gust blows. */
+export const WIND_PUSH = 2.4;
 export const PLAYER_WIDTH = 32;
 export const PLAYER_HEIGHT = 48;
 
@@ -270,6 +274,12 @@ function baseState(carry: Player, progress: Progress): GameState {
     mapCursor: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
     minigame: null,
     bestScores: progress.bestScores,
+    wind: false,
+    windTimer: 0,
+    windBlowing: false,
+    windDir: -1,
+    bounces: [],
+    sceneHint: "",
   };
 }
 
@@ -314,11 +324,24 @@ export function loadLevel(
   state.bossArenaX = arenaXForWidth(width);
   state.swim = level.swim === true;
   state.biome = level.biome;
+  state.wind = scene?.wind === true;
+  state.windTimer = 0;
+  state.windBlowing = false;
+  state.bounces = (scene?.bounces ?? []).map((b) => ({ ...b }));
+  state.sceneHint = scene?.hint ?? "";
   state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
   state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
     { x: 0, y: GROUND_Y, width, height: 80 },
-    ...(scene ? scene.platforms : level.platforms).map((p: Platform) => ({ ...p })),
+    ...(scene ? scene.platforms : level.platforms).map((p: Platform) => {
+      const cp = { ...p };
+      if (cp.axis) {
+        cp.baseX = cp.x;
+        cp.baseY = cp.y;
+        cp.moveT = 0;
+      }
+      return cp;
+    }),
   ];
   state.pails = hasBoss ? levelPails(state.bossArenaX) : [];
   state.cage =
@@ -501,6 +524,36 @@ function startDialog(state: GameState, speaker: string, lines: string[]) {
 
 /* ---------------- Player ---------------- */
 
+/** Oscillate moving platforms and carry the knight standing on them. */
+function updateMovingPlatforms(state: GameState) {
+  if (state.topDown || state.mode !== "playing") return;
+  const p = state.player;
+  for (const platform of state.platforms) {
+    if (!platform.axis || !platform.range || !platform.speed) continue;
+    platform.moveT = (platform.moveT ?? 0) + 1;
+    const bx = platform.baseX ?? platform.x;
+    const by = platform.baseY ?? platform.y;
+    const offset = Math.sin(platform.moveT * platform.speed) * platform.range;
+    const nx = platform.axis === "x" ? bx + offset : bx;
+    const ny = platform.axis === "y" ? by + offset : by;
+    const dx = nx - platform.x;
+    const dy = ny - platform.y;
+    // Carry the knight if he was standing on the platform's previous spot.
+    const oldTop = platform.y;
+    if (
+      p.onGround &&
+      Math.abs(p.y + p.height - oldTop) < 6 &&
+      p.x + p.width > platform.x &&
+      p.x < platform.x + platform.width
+    ) {
+      p.x += dx;
+      p.y += dy;
+    }
+    platform.x = nx;
+    platform.y = ny;
+  }
+}
+
 function updatePlayer(state: GameState) {
   const p = state.player;
   const keys = state.keys;
@@ -530,6 +583,34 @@ function updatePlayer(state: GameState) {
   if (sprinting && !swim && (moveLeft || moveRight)) {
     p.hunger = Math.max(0, p.hunger - 0.008);
     if (p.hunger <= 0) showMessage(state, "Too hungry to sprint!");
+  }
+
+  // Wind gusts: ~4s calm, then a ~2s gust that pushes the knight back.
+  if (state.wind && !swim) {
+    state.windTimer++;
+    const cycle = state.windTimer % 360;
+    const blowing = cycle >= 240;
+    if (blowing && !state.windBlowing) {
+      state.windBlowing = true;
+      sfx.gust();
+      showMessage(state, "A gust of wind!", 90);
+    }
+    if (!blowing) state.windBlowing = false;
+    if (state.windBlowing) {
+      p.x += WIND_PUSH * state.windDir;
+      if (Math.random() < 0.35) {
+        state.particles.push({
+          x: state.cameraX + CANVAS_WIDTH + 10,
+          y: 90 + Math.random() * 380,
+          vx: state.windDir * (5 + Math.random() * 3),
+          vy: 0.6 - Math.random() * 1.2,
+          life: 90,
+          maxLife: 90,
+          color: Math.random() < 0.5 ? "#4ade80" : "#a3e635",
+          size: 3,
+        });
+      }
+    }
   }
 
   if (swim) {
@@ -606,6 +687,29 @@ function updatePlayer(state: GameState) {
         p.x = platform.x - p.width;
       } else {
         p.x = platform.x + platform.width;
+      }
+    }
+  }
+
+  // Bouncy mushrooms: landing on one launches the knight high up.
+  for (const b of state.bounces) {
+    const cap = { x: b.x, y: b.y, width: 56, height: 26 };
+    if (p.vy >= 0 && rectsOverlap(p, cap) && p.y + p.height - p.vy <= b.y + 10) {
+      p.y = b.y - p.height;
+      p.vy = BOUNCE_FORCE;
+      p.onGround = false;
+      sfx.bounce();
+      for (let i = 0; i < 8; i++) {
+        state.particles.push({
+          x: b.x + 28,
+          y: b.y + 6,
+          vx: (Math.random() - 0.5) * 4,
+          vy: -Math.random() * 3,
+          life: 30,
+          maxLife: 30,
+          color: "#fca5a5",
+          size: 3,
+        });
       }
     }
   }
@@ -1657,6 +1761,7 @@ export function updateGame(state: GameState) {
     return;
   }
 
+  updateMovingPlatforms(state);
   updatePlayer(state);
   if (state.mode !== "playing") return;
   updateEnemies(state);
