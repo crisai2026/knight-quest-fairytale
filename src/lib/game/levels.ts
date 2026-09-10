@@ -703,6 +703,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "insect", x: 2500, patrolStart: 2400, patrolEnd: 2760 },
     ],
     chests: [chest(280, "firstaid"), chest(1080, "arrows"), chest(1780, "food"), chest(2420, "firstaid")],
+    scenes: MOUNTAIN_SCENES,
   },
   {
     name: "Level 10 — The Dragon's Castle",
