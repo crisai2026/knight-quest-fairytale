@@ -291,18 +291,17 @@ export function GameCanvas() {
       type="button"
       onClick={() => {
         unlockAudio();
-        const next = !musicOn;
-        setMusicOn(next);
-        setMusicEnabled(next);
+        stateRef.current.started = true;
+        openMenu(stateRef.current);
       }}
       className={
         isTouch
           ? "absolute right-2 top-2 z-20 h-9 w-9 rounded-full border border-slate-400/50 bg-slate-900/50 text-base text-slate-100"
           : "absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 sm:text-sm"
       }
-      aria-label={musicOn ? "Turn music off" : "Turn music on"}
+      aria-label="Open the game menu"
     >
-      {isTouch ? (musicOn ? "♪" : "✕") : musicOn ? "Music: On" : "Music: Off"}
+      {isTouch ? "☰" : "Menu"}
     </button>
   );
 
