@@ -301,6 +301,20 @@ function baseState(carry: Player, progress: Progress): GameState {
     fallerTimer: 0,
     timeLimit: 0,
     timeLeft: 0,
+    darkness: false,
+    tide: false,
+    tideY: GROUND_Y,
+    tideT: 0,
+    current: false,
+    currentTimer: 0,
+    currentDir: 1,
+    crumbling: false,
+    swings: [],
+    swingBoost: 0,
+    swingDir: 1,
+    jets: [],
+    jetTimer: 0,
+    heat: false,
   };
 }
 
