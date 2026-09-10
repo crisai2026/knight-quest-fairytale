@@ -130,6 +130,16 @@ function saveProgress(state: GameState) {
   }
 }
 
+/** Is there a saved game to continue from? */
+export function hasSave(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SAVE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function resetProgress() {
   if (typeof window === "undefined") return;
   try {
