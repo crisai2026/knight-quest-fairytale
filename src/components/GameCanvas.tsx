@@ -6,15 +6,18 @@ import {
   handleKeyDown,
   confirmLevelStart,
   handleMapClick,
+  handleMenuClick,
+  openMenu,
   handleKeyUp,
   renderGame,
   updateGame,
 } from "@/lib/game/engine";
-import { isMusicEnabled, setMusicEnabled, unlockAudio } from "@/lib/game/audio";
+import { unlockAudio } from "@/lib/game/audio";
 import type { GameState } from "@/lib/game/types";
 
 function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
   if (
+    state.mode === "menu" ||
     state.mode === "intro" ||
     state.mode === "minigame" ||
     state.mode === "map" ||
@@ -99,20 +102,6 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(state.message, (CANVAS_WIDTH - textWidth) / 2, CANVAS_HEIGHT / 2 + 6);
   }
 
-  if (!state.started) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 28px sans-serif";
-    const title = "Knight & Princess";
-    const titleWidth = ctx.measureText(title).width;
-    ctx.fillText(title, (CANVAS_WIDTH - titleWidth) / 2, CANVAS_HEIGHT / 2 - 40);
-    ctx.font = "16px sans-serif";
-    const sub = "Press any key to start";
-    const subWidth = ctx.measureText(sub).width;
-    ctx.fillText(sub, (CANVAS_WIDTH - subWidth) / 2, CANVAS_HEIGHT / 2 + 10);
-  }
-
   if (state.mode === "won") {
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -154,12 +143,10 @@ export function GameCanvas() {
   const stateRef = useRef<GameState>(createInitialState());
   const rafRef = useRef<number | null>(null);
   const [scale, setScale] = useState(1);
-  const [musicOn, setMusicOn] = useState(true);
   const [isTouch, setIsTouch] = useState(false);
   const [portrait, setPortrait] = useState(false);
 
   useEffect(() => {
-    setMusicOn(isMusicEnabled());
     setIsTouch(window.matchMedia("(pointer: coarse)").matches);
   }, []);
 
@@ -285,6 +272,7 @@ export function GameCanvas() {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH;
         const y = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT;
+        if (handleMenuClick(stateRef.current, x, y)) return;
         if (handleMapClick(stateRef.current, x, y)) return;
         confirmLevelStart(stateRef.current);
       }}
@@ -302,18 +290,17 @@ export function GameCanvas() {
       type="button"
       onClick={() => {
         unlockAudio();
-        const next = !musicOn;
-        setMusicOn(next);
-        setMusicEnabled(next);
+        stateRef.current.started = true;
+        openMenu(stateRef.current);
       }}
       className={
         isTouch
           ? "absolute right-2 top-2 z-20 h-9 w-9 rounded-full border border-slate-400/50 bg-slate-900/50 text-base text-slate-100"
           : "absolute right-3 top-3 rounded-md border border-slate-500/60 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-800 sm:text-sm"
       }
-      aria-label={musicOn ? "Turn music off" : "Turn music on"}
+      aria-label="Open the game menu"
     >
-      {isTouch ? (musicOn ? "♪" : "✕") : musicOn ? "Music: On" : "Music: Off"}
+      {isTouch ? "☰" : "Menu"}
     </button>
   );
 

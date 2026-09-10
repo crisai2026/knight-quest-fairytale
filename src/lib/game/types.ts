@@ -1,4 +1,5 @@
 export type GameMode =
+  | "menu"
   | "intro"
   | "levelstart"
   | "playing"
@@ -144,6 +145,13 @@ export type GameState = {
   /** Cursor inside the scene grid. */
   mapSceneCursor: number;
   mapCursor: number;
+
+  /** Highlighted entry on the game menu. */
+  menuCursor: number;
+  /** Mode to go back to when the menu is closed (null = title screen). */
+  menuPrevMode: GameMode | null;
+  /** Menu is asking to confirm wiping the save. */
+  menuConfirm: boolean;
 
   minigame: MinigameState | null;
   bestScores: Record<string, number>;

@@ -43,7 +43,7 @@ import {
   type Rect,
 } from "./village";
 import { createMinigame, drawMinigame, updateMinigame } from "./minigames";
-import { sfx, playMusic, type MusicTrack } from "./audio";
+import { sfx, playMusic, isMusicEnabled, setMusicEnabled, type MusicTrack } from "./audio";
 
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
@@ -127,6 +127,16 @@ function saveProgress(state: GameState) {
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
     /* storage disabled — progress simply isn't kept */
+  }
+}
+
+/** Is there a saved game to continue from? */
+export function hasSave(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SAVE_KEY) !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -273,6 +283,9 @@ function baseState(carry: Player, progress: Progress): GameState {
     mapChapter: 0,
     mapSceneCursor: 0,
     mapCursor: Math.min(progress.unlockedLevels - 1, LEVELS.length - 1),
+    menuCursor: 0,
+    menuPrevMode: null,
+    menuConfirm: false,
     minigame: null,
     bestScores: progress.bestScores,
     wind: false,
@@ -407,7 +420,9 @@ export function loadVillage(carry: Player, progress: Progress): GameState {
 export function createInitialState(): GameState {
   const progress = loadProgress();
   const state = loadVillage(createPlayer(progress), progress);
-  state.mode = "intro";
+  state.mode = "menu";
+  state.menuPrevMode = null;
+  state.menuCursor = hasSave() ? 0 : 1;
   state.cutsceneTimer = 0;
   state.cutscenePhase = 0;
   return state;
@@ -485,6 +500,126 @@ function advanceScene(state: GameState) {
 export function restartGame(state: GameState) {
   const progress = progressFrom(state);
   replaceState(state, loadVillage(state.player, progress));
+}
+
+/* ---------------- Game menu ---------------- */
+
+type MenuItem = { key: string; label: string; enabled: boolean };
+
+const MENU_BTN = { x: 420, y: 210, w: 340, h: 52, gap: 14 };
+
+export function menuItems(state: GameState): MenuItem[] {
+  const paused = state.menuPrevMode !== null;
+  const saved = hasSave();
+  const items: MenuItem[] = [];
+  if (paused) items.push({ key: "resume", label: "Resume", enabled: true });
+  else items.push({ key: "continue", label: "Continue", enabled: saved });
+  items.push({ key: "new", label: "Start From The Beginning", enabled: true });
+  if (saved) items.push({ key: "restart", label: "Restart Game", enabled: true });
+  items.push({ key: "music", label: `Music: ${isMusicEnabled() ? "On" : "Off"}`, enabled: true });
+  return items;
+}
+
+function menuItemRect(i: number) {
+  return { x: MENU_BTN.x, y: MENU_BTN.y + i * (MENU_BTN.h + MENU_BTN.gap), w: MENU_BTN.w, h: MENU_BTN.h };
+}
+
+/** Open the menu over whatever is happening right now. */
+export function openMenu(state: GameState) {
+  if (state.mode === "menu") return;
+  state.menuPrevMode = state.mode;
+  state.menuCursor = 0;
+  state.menuConfirm = false;
+  state.mode = "menu";
+}
+
+function beginNewGame(state: GameState) {
+  resetProgress();
+  const progress = loadProgress();
+  replaceState(state, loadVillage(createPlayer(progress), progress));
+  state.mode = "intro";
+  state.menuPrevMode = null;
+  state.menuConfirm = false;
+  state.cutsceneTimer = 0;
+  state.cutscenePhase = 0;
+  state.started = true;
+}
+
+function continueGame(state: GameState) {
+  const progress = loadProgress();
+  replaceState(state, loadVillage(createPlayer(progress), progress));
+  state.mode = "playing";
+  state.menuPrevMode = null;
+  state.started = true;
+  showMessage(state, "Read the map board, then step into the portal.", 200);
+}
+
+function activateMenuItem(state: GameState, item: MenuItem) {
+  if (!item.enabled) {
+    sfx.deny();
+    return;
+  }
+  if (item.key === "music") {
+    setMusicEnabled(!isMusicEnabled());
+    sfx.talk();
+    return;
+  }
+  if (item.key === "resume") {
+    sfx.talk();
+    state.mode = state.menuPrevMode ?? "playing";
+    state.menuPrevMode = null;
+    state.menuConfirm = false;
+    return;
+  }
+  if (item.key === "continue") {
+    sfx.talk();
+    continueGame(state);
+    return;
+  }
+  // new / restart: both wipe the save and replay the story from page one.
+  if (hasSave() && !state.menuConfirm) {
+    state.menuConfirm = true;
+    sfx.deny();
+    return;
+  }
+  sfx.talk();
+  beginNewGame(state);
+}
+
+export function handleMenuKey(state: GameState, key: string) {
+  const items = menuItems(state);
+  if (key === "w" || key === "arrowup") {
+    state.menuCursor = (state.menuCursor - 1 + items.length) % items.length;
+    state.menuConfirm = false;
+  } else if (key === "s" || key === "arrowdown") {
+    state.menuCursor = (state.menuCursor + 1) % items.length;
+    state.menuConfirm = false;
+  } else if (key === "enter" || key === "e" || key === " ") {
+    const item = items[state.menuCursor];
+    if (item) activateMenuItem(state, item);
+  } else if (key === "escape") {
+    if (state.menuConfirm) state.menuConfirm = false;
+    else if (state.menuPrevMode !== null) {
+      state.mode = state.menuPrevMode;
+      state.menuPrevMode = null;
+    }
+  }
+}
+
+/** Canvas click on the menu screen. Returns true when it hit a button. */
+export function handleMenuClick(state: GameState, x: number, y: number): boolean {
+  if (state.mode !== "menu") return false;
+  const items = menuItems(state);
+  for (let i = 0; i < items.length; i++) {
+    const r = menuItemRect(i);
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+      state.menuCursor = i;
+      const item = items[i];
+      if (item) activateMenuItem(state, item);
+      return true;
+    }
+  }
+  return true; // clicks elsewhere on the menu never fall through to the game
 }
 
 /* ---------------- Helpers ---------------- */
@@ -1767,6 +1902,7 @@ function updateCutscene(state: GameState) {
 function musicForState(state: GameState): MusicTrack {
   if (!state.started) return null;
   if (state.mode === "gameover") return null;
+  if (state.mode === "menu") return "storybook";
   if (state.mode === "intro") return "storybook";
   if (state.mode === "won" || (state.cage?.open ?? false)) return "beautiful";
   if (state.boss) return "rock";
@@ -1809,6 +1945,8 @@ function buyItem(state: GameState, key: string) {
 
 export function updateGame(state: GameState) {
   playMusic(state.celebrateTimer > 0 ? null : musicForState(state));
+
+  if (state.mode === "menu") return;
 
   if (state.mode === "won" || state.mode === "gameover") return;
 
@@ -1881,6 +2019,15 @@ export function updateGame(state: GameState) {
 }
 
 export function handleKeyDown(state: GameState, key: string) {
+  if (state.mode === "menu") {
+    state.started = true;
+    handleMenuKey(state, key);
+    return;
+  }
+  if (key === "escape" && state.mode === "playing") {
+    openMenu(state);
+    return;
+  }
   if (state.mode === "intro") {
     endIntro(state);
     state.started = true;
@@ -3857,8 +4004,206 @@ function drawParticles(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.globalAlpha = 1;
 }
 
+/** Title-screen art: the knight on his rock, minions below, villains in the mist. */
+function drawMenuArt(ctx: CanvasRenderingContext2D, t: number) {
+  const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+  sky.addColorStop(0, "#1e1b4b");
+  sky.addColorStop(0.55, "#7c2d12");
+  sky.addColorStop(1, "#0f172a");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  // Distant castle with the dragon perched on it.
+  ctx.fillStyle = "#1f2937";
+  ctx.fillRect(260, 210, 120, 190);
+  for (let i = 0; i < 3; i++) ctx.fillRect(255 + i * 55, 176, 30, 40);
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(300, 320, 30, 80);
+  // Princess in her barred window.
+  ctx.fillStyle = "#fde68a";
+  ctx.fillRect(300, 240, 34, 40);
+  ctx.fillStyle = "#ec4899";
+  ctx.fillRect(310, 252, 14, 28);
+  ctx.fillStyle = "#fcd7b6";
+  ctx.beginPath();
+  ctx.arc(317, 246, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#374151";
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.moveTo(306 + i * 11, 240);
+    ctx.lineTo(306 + i * 11, 280);
+    ctx.stroke();
+  }
+
+  // Dragon circling above the castle.
+  const dy = 120 + Math.sin(t * 0.03) * 10;
+  ctx.save();
+  ctx.translate(150, dy);
+  ctx.fillStyle = "#14532d";
+  ctx.fillRect(0, 0, 96, 44);
+  ctx.beginPath();
+  ctx.moveTo(96, 8);
+  ctx.lineTo(126, 2);
+  ctx.lineTo(96, 26);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#166534";
+  ctx.beginPath();
+  ctx.moveTo(16, 2);
+  ctx.lineTo(70, -34 - Math.sin(t * 0.12) * 8);
+  ctx.lineTo(44, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#facc15";
+  ctx.fillRect(82, 8, 9, 9);
+  ctx.restore();
+
+  // Wizard Zarvok in the mist.
+  const wx = 78;
+  const wy = 512;
+  ctx.fillStyle = "#3b0764";
+  ctx.beginPath();
+  ctx.moveTo(wx, wy - 80);
+  ctx.lineTo(wx + 34, wy);
+  ctx.lineTo(wx - 34, wy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#fcd7b6";
+  ctx.beginPath();
+  ctx.arc(wx, wy - 86, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#3b0764";
+  ctx.beginPath();
+  ctx.moveTo(wx - 20, wy - 94);
+  ctx.lineTo(wx, wy - 142);
+  ctx.lineTo(wx + 20, wy - 94);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#a78bfa";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(wx + 26, wy);
+  ctx.lineTo(wx + 20, wy - 100);
+  ctx.stroke();
+  ctx.fillStyle = `rgba(232,121,249,${0.5 + Math.abs(Math.sin(t * 0.05)) * 0.5})`;
+  ctx.beginPath();
+  ctx.arc(wx + 20, wy - 106, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mist bands.
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = `rgba(226,232,240,${0.06 + i * 0.03})`;
+    ctx.fillRect(0, 380 + i * 40, CANVAS_WIDTH, 26);
+  }
+
+  // Ground and the hero's rock.
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(0, 520, CANVAS_WIDTH, CANVAS_HEIGHT - 520);
+  ctx.fillStyle = "#44403c";
+  ctx.beginPath();
+  ctx.moveTo(90, 520);
+  ctx.lineTo(140, 430);
+  ctx.lineTo(250, 430);
+  ctx.lineTo(300, 520);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#57534e";
+  ctx.fillRect(140, 424, 110, 10);
+
+  // Minions circling the rock.
+  drawEnemy(ctx, introMinion("furry", 40 + Math.sin(t * 0.02) * 12, 500), 0);
+  drawEnemy(ctx, introMinion("tentacle", 300 + Math.cos(t * 0.02) * 14, 500), 0);
+  drawEnemy(ctx, introMinion("winged", 210, 360 + Math.sin(t * 0.05) * 12), 0);
+
+  // The knight, sword raised.
+  const kx = 176;
+  const ky = 424;
+  ctx.fillStyle = "#1e3a8a";
+  ctx.fillRect(kx, ky - 46, 30, 46);
+  ctx.fillStyle = "#94a3b8";
+  ctx.fillRect(kx - 4, ky - 40, 38, 22);
+  ctx.fillStyle = "#cbd5e1";
+  ctx.beginPath();
+  ctx.arc(kx + 15, ky - 58, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(kx + 6, ky - 62, 18, 6);
+  // Raised sword.
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillRect(kx + 32, ky - 130, 8, 66);
+  ctx.fillStyle = "#a16207";
+  ctx.fillRect(kx + 24, ky - 66, 24, 7);
+  ctx.fillRect(kx + 32, ky - 60, 8, 14);
+  // Shield arm.
+  ctx.fillStyle = "#b91c1c";
+  ctx.fillRect(kx - 14, ky - 38, 16, 26);
+
+  // Glint on the blade.
+  ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.abs(Math.sin(t * 0.06)) * 0.7})`;
+  ctx.beginPath();
+  ctx.arc(kx + 36, ky - 128, 5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawMenuScreen(ctx: CanvasRenderingContext2D, state: GameState) {
+  const t = Date.now() / 16;
+  drawMenuArt(ctx, t);
+
+  // Panel behind the buttons so the text stays readable.
+  ctx.fillStyle = "rgba(2,6,23,0.68)";
+  ctx.fillRect(MENU_BTN.x - 24, 60, MENU_BTN.w + 48, CANVAS_HEIGHT - 100);
+
+  ctx.textAlign = "center";
+  const cx = MENU_BTN.x + MENU_BTN.w / 2;
+  ctx.fillStyle = "#fbbf24";
+  ctx.font = "bold 40px serif";
+  ctx.fillText("Knight", cx, 120);
+  ctx.fillStyle = "#f8fafc";
+  ctx.font = "bold 34px serif";
+  ctx.fillText("& Princess", cx, 158);
+
+  const items = menuItems(state);
+  items.forEach((item, i) => {
+    const r = menuItemRect(i);
+    const active = i === state.menuCursor;
+    ctx.fillStyle = item.enabled ? (active ? "#1d4ed8" : "rgba(30,41,59,0.9)") : "rgba(30,41,59,0.5)";
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = active ? "#fbbf24" : "#475569";
+    ctx.lineWidth = active ? 3 : 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = item.enabled ? "#f8fafc" : "#64748b";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText(item.label, r.x + r.w / 2, r.y + r.h / 2 + 7);
+  });
+
+  const bottomY = MENU_BTN.y + items.length * (MENU_BTN.h + MENU_BTN.gap) + 20;
+  if (state.menuConfirm) {
+    ctx.fillStyle = "#fca5a5";
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText("Start over? Your progress will be lost.", cx, bottomY);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "15px sans-serif";
+    ctx.fillText("Click again to confirm • Esc to cancel", cx, bottomY + 22);
+  } else {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("Arrows / W-S to choose • Enter or tap to pick", cx, bottomY);
+    if (state.menuPrevMode === null && !hasSave()) {
+      ctx.fillText("No saved game yet — start from the beginning.", cx, bottomY + 20);
+    }
+  }
+  ctx.textAlign = "left";
+}
+
 export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  if (state.mode === "menu") {
+    drawMenuScreen(ctx, state);
+    return;
+  }
 
   if (state.mode === "intro") {
     drawIntro(ctx, state);
