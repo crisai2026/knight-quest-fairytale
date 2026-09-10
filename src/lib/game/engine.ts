@@ -506,7 +506,7 @@ export function restartGame(state: GameState) {
 
 type MenuItem = { key: string; label: string; enabled: boolean };
 
-const MENU_BTN = { x: 620, y: 210, w: 300, h: 54, gap: 16 };
+const MENU_BTN = { x: 420, y: 210, w: 340, h: 52, gap: 14 };
 
 export function menuItems(state: GameState): MenuItem[] {
   const paused = state.menuPrevMode !== null;
