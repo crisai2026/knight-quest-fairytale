@@ -396,6 +396,11 @@ export function loadLevel(
     { x: 0, y: GROUND_Y, width, height: 80 },
     ...(scene ? scene.platforms : level.platforms).map((p: Platform) => {
       const cp = { ...p };
+      if (state.crumbling && !cp.axis) {
+        cp.crumble = true;
+        cp.crumbleT = 0;
+        cp.gone = 0;
+      }
       if (cp.axis) {
         cp.baseX = cp.x;
         cp.baseY = cp.y;
