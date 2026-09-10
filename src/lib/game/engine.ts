@@ -2019,6 +2019,17 @@ export function updateGame(state: GameState) {
 }
 
 export function handleKeyDown(state: GameState, key: string) {
+  if (state.mode === "menu") {
+    state.started = true;
+    handleMenuKey(state, key);
+    return;
+  }
+  if (key === "escape" && (state.mode === "playing" || state.mode === "dialog" || state.mode === "shop")) {
+    if (state.mode === "playing") {
+      openMenu(state);
+      return;
+    }
+  }
   if (state.mode === "intro") {
     endIntro(state);
     state.started = true;
