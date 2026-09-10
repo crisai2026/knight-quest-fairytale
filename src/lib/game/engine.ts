@@ -815,6 +815,12 @@ function updatePlayer(state: GameState) {
 
   updateFallers(state);
   updateSceneTimer(state);
+  updateCurrent(state);
+  updateTide(state);
+  updateHeat(state);
+  updateJets(state);
+  updateCrumbling(state);
+  updateSwings(state);
 
   if (swim) {
     if (keys[" "] || keys["w"] || keys["arrowup"]) p.vy -= 0.42;
