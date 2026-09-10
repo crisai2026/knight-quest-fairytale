@@ -4040,7 +4040,7 @@ function drawMenuArt(ctx: CanvasRenderingContext2D, t: number) {
   // Dragon circling above the castle.
   const dy = 120 + Math.sin(t * 0.03) * 10;
   ctx.save();
-  ctx.translate(500, dy);
+  ctx.translate(150, dy);
   ctx.fillStyle = "#14532d";
   ctx.fillRect(0, 0, 96, 44);
   ctx.beginPath();
@@ -4061,7 +4061,7 @@ function drawMenuArt(ctx: CanvasRenderingContext2D, t: number) {
   ctx.restore();
 
   // Wizard Zarvok in the mist.
-  const wx = 700;
+  const wx = 340;
   const wy = 430;
   ctx.fillStyle = "#3b0764";
   ctx.beginPath();
