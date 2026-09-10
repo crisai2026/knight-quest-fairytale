@@ -686,6 +686,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "winged", x: 2100, patrolStart: 1940, patrolEnd: 2460, y: 290 },
     ],
     chests: [chest(300, "arrows"), chest(1120, "food"), chest(1900, "firstaid"), chest(2400, "arrows")],
+    scenes: DESERT_SCENES,
   },
   {
     name: "Level 9 — Snow Mountain",
