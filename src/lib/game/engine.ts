@@ -4015,25 +4015,25 @@ function drawMenuArt(ctx: CanvasRenderingContext2D, t: number) {
 
   // Distant castle with the dragon perched on it.
   ctx.fillStyle = "#1f2937";
-  ctx.fillRect(560, 210, 120, 190);
-  for (let i = 0; i < 3; i++) ctx.fillRect(555 + i * 55, 176, 30, 40);
+  ctx.fillRect(260, 210, 120, 190);
+  for (let i = 0; i < 3; i++) ctx.fillRect(255 + i * 55, 176, 30, 40);
   ctx.fillStyle = "#111827";
-  ctx.fillRect(600, 320, 30, 80);
+  ctx.fillRect(300, 320, 30, 80);
   // Princess in her barred window.
   ctx.fillStyle = "#fde68a";
-  ctx.fillRect(600, 240, 34, 40);
+  ctx.fillRect(300, 240, 34, 40);
   ctx.fillStyle = "#ec4899";
-  ctx.fillRect(610, 252, 14, 28);
+  ctx.fillRect(310, 252, 14, 28);
   ctx.fillStyle = "#fcd7b6";
   ctx.beginPath();
-  ctx.arc(617, 246, 7, 0, Math.PI * 2);
+  ctx.arc(317, 246, 7, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = "#374151";
   ctx.lineWidth = 3;
   for (let i = 0; i < 3; i++) {
     ctx.beginPath();
-    ctx.moveTo(606 + i * 11, 240);
-    ctx.lineTo(606 + i * 11, 280);
+    ctx.moveTo(306 + i * 11, 240);
+    ctx.lineTo(306 + i * 11, 280);
     ctx.stroke();
   }
 
