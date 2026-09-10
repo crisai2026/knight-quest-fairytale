@@ -654,6 +654,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "insect", x: 2100, patrolStart: 2000, patrolEnd: 2400 },
     ],
     chests: [chest(320, "arrows"), chest(1140, "food"), chest(1960, "bandage")],
+    scenes: JUNGLE_SCENES,
   },
   {
     name: "Level 7 — Frozen Wastes",
