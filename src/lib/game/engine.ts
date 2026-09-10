@@ -2346,6 +2346,11 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     dusk: ["#4c1d95", "#f59e0b"],
     storm: ["#1e293b", "#475569"],
     sunset: ["#f97316", "#fcd34d"],
+    night: ["#020617", "#1e293b"],
+    sand: ["#b45309", "#fde68a"],
+    ice: ["#93c5fd", "#f8fafc"],
+    ember: ["#450a0a", "#f97316"],
+    deep: ["#082f49", "#0e7490"],
   };
   const pair = state.sky !== "clear" && state.scene === "level" ? skyStops[state.sky] : stops[b];
   gradient.addColorStop(0, pair[0]);
