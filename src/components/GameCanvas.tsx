@@ -103,6 +103,9 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
   }
 
   if (!state.started) {
+    // handled by the title menu
+  }
+  if (false) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.fillStyle = "#ffffff";
