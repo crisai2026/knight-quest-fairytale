@@ -597,6 +597,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "tentacle", x: 2020, patrolStart: 1960, patrolEnd: 2260 },
     ],
     chests: [chest(380, "food"), chest(1200, "bandage"), chest(2100, "firstaid")],
+    scenes: BEACH_SCENES,
   },
   {
     name: "Level 4 — The Deep Ocean",
