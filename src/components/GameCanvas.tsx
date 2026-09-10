@@ -102,23 +102,6 @@ function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillText(state.message, (CANVAS_WIDTH - textWidth) / 2, CANVAS_HEIGHT / 2 + 6);
   }
 
-  if (!state.started) {
-    // handled by the title menu
-  }
-  if (false) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 28px sans-serif";
-    const title = "Knight & Princess";
-    const titleWidth = ctx.measureText(title).width;
-    ctx.fillText(title, (CANVAS_WIDTH - titleWidth) / 2, CANVAS_HEIGHT / 2 - 40);
-    ctx.font = "16px sans-serif";
-    const sub = "Press any key to start";
-    const subWidth = ctx.measureText(sub).width;
-    ctx.fillText(sub, (CANVAS_WIDTH - subWidth) / 2, CANVAS_HEIGHT / 2 + 10);
-  }
-
   if (state.mode === "won") {
     ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
