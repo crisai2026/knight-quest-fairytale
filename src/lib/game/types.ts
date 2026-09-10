@@ -1,4 +1,5 @@
 export type GameMode =
+  | "menu"
   | "intro"
   | "levelstart"
   | "playing"
