@@ -301,6 +301,20 @@ function baseState(carry: Player, progress: Progress): GameState {
     fallerTimer: 0,
     timeLimit: 0,
     timeLeft: 0,
+    darkness: false,
+    tide: false,
+    tideY: GROUND_Y,
+    tideT: 0,
+    current: false,
+    currentTimer: 0,
+    currentDir: 1,
+    crumbling: false,
+    swings: [],
+    swingBoost: 0,
+    swingDir: 1,
+    jets: [],
+    jetTimer: 0,
+    heat: false,
   };
 }
 
@@ -357,12 +371,36 @@ export function loadLevel(
   state.fallerTimer = scene?.falling === true ? 1 : 0;
   state.timeLimit = (scene?.timeLimit ?? 0) * 60;
   state.timeLeft = state.timeLimit;
+  state.darkness = scene?.darkness === true;
+  state.tide = scene?.tide === true;
+  state.tideT = 0;
+  state.tideY = GROUND_Y;
+  state.current = scene?.current === true;
+  state.currentTimer = 0;
+  state.currentDir = 1;
+  state.crumbling = scene?.crumbling === true;
+  state.swings = (scene?.swings ?? []).map((s) => ({ ...s }));
+  state.swingBoost = 0;
+  state.swingDir = 1;
+  state.heat = scene?.heat === true;
+  state.jets = scene?.firejets === true
+    ? Array.from({ length: Math.max(3, Math.floor(width / 620)) }, (_, i) => ({
+        x: 420 + i * 620,
+        phase: (i * 37) % 120,
+      }))
+    : [];
+  state.jetTimer = 0;
   state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
   state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
     { x: 0, y: GROUND_Y, width, height: 80 },
     ...(scene ? scene.platforms : level.platforms).map((p: Platform) => {
       const cp = { ...p };
+      if (state.crumbling && !cp.axis) {
+        cp.crumble = true;
+        cp.crumbleT = 0;
+        cp.gone = 0;
+      }
       if (cp.axis) {
         cp.baseX = cp.x;
         cp.baseY = cp.y;
@@ -777,6 +815,12 @@ function updatePlayer(state: GameState) {
 
   updateFallers(state);
   updateSceneTimer(state);
+  updateCurrent(state);
+  updateTide(state);
+  updateHeat(state);
+  updateJets(state);
+  updateCrumbling(state);
+  updateSwings(state);
 
   if (swim) {
     if (keys[" "] || keys["w"] || keys["arrowup"]) p.vy -= 0.42;
@@ -839,6 +883,7 @@ function updatePlayer(state: GameState) {
 
   p.onGround = false;
   for (const platform of state.platforms) {
+    if (platform.gone && platform.gone > 0) continue;
     if (rectsOverlap(p, platform)) {
       const prevY = p.y - p.vy;
       if (prevY + p.height <= platform.y + 4 && p.vy >= 0) {
@@ -954,6 +999,142 @@ function updateSceneTimer(state: GameState) {
     sfx.hurt();
     showMessage(state, "Out of time! Night is closing in.", 90);
     state.timeLeft = 300;
+  }
+}
+
+/** Deep-ocean current: drifts the knight sideways, switching every few seconds. */
+function updateCurrent(state: GameState) {
+  if (!state.current) return;
+  state.currentTimer++;
+  const cycle = state.currentTimer % 480;
+  if (cycle === 0) {
+    state.currentDir = state.currentDir === 1 ? -1 : 1;
+    showMessage(state, state.currentDir === 1 ? "The current pulls forward!" : "The current pushes back!", 90);
+  }
+  state.player.x += 0.9 * state.currentDir;
+  if (Math.random() < 0.4) {
+    state.particles.push({
+      x: state.cameraX + (state.currentDir === 1 ? -10 : CANVAS_WIDTH + 10),
+      y: 60 + Math.random() * 420,
+      vx: state.currentDir * (3 + Math.random() * 2),
+      vy: (Math.random() - 0.5) * 0.6,
+      life: 90,
+      maxLife: 90,
+      color: "#bae6fd",
+      size: 2,
+    });
+  }
+}
+
+/** Beach tide: the sea creeps up the shore, hurting the knight when it reaches him. */
+function updateTide(state: GameState) {
+  if (!state.tide) return;
+  state.tideT++;
+  const swell = (Math.sin(state.tideT / 240) + 1) / 2; // 0..1
+  state.tideY = GROUND_Y - 20 - swell * 90;
+  const p = state.player;
+  if (p.y + p.height > state.tideY && p.invulnerable <= 0) {
+    p.health = Math.max(0, p.health - 1);
+    p.invulnerable = 70;
+    p.vy = -5;
+    sfx.hurt();
+    showMessage(state, "The tide caught you — get higher!", 90);
+  }
+}
+
+/** Desert heat: hunger drains even when standing still. */
+function updateHeat(state: GameState) {
+  if (!state.heat) return;
+  const p = state.player;
+  p.hunger = Math.max(0, p.hunger - 0.004);
+}
+
+/** Castle fire jets: bursts of flame on a rhythm. */
+function updateJets(state: GameState) {
+  if (state.jets.length === 0) return;
+  state.jetTimer++;
+  const p = state.player;
+  for (const j of state.jets) {
+    const t = (state.jetTimer + j.phase) % 150;
+    const firing = t >= 100;
+    if (!firing) continue;
+    const box = { x: j.x - 16, y: GROUND_Y - 130, width: 32, height: 130 };
+    if (rectsOverlap(p, box) && p.invulnerable <= 0) {
+      p.health = Math.max(0, p.health - 1);
+      p.invulnerable = 60;
+      p.vy = -6;
+      sfx.hurt();
+      showMessage(state, "Burned by the fire jet!", 60);
+    }
+    if (Math.random() < 0.5) {
+      state.particles.push({
+        x: j.x + (Math.random() - 0.5) * 20,
+        y: GROUND_Y - 20 - Math.random() * 100,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -2 - Math.random() * 2,
+        life: 22,
+        maxLife: 22,
+        color: Math.random() < 0.5 ? "#f97316" : "#fbbf24",
+        size: 3,
+      });
+    }
+  }
+}
+
+/** Cloud chapter: ledges collapse shortly after the knight lands on them. */
+function updateCrumbling(state: GameState) {
+  if (!state.crumbling) return;
+  const p = state.player;
+  for (const pl of state.platforms) {
+    if (!pl.crumble) continue;
+    if (pl.gone && pl.gone > 0) {
+      pl.gone--;
+      if (pl.gone === 0) pl.crumbleT = 0;
+      continue;
+    }
+    const standing =
+      p.onGround &&
+      Math.abs(p.y + p.height - pl.y) < 6 &&
+      p.x + p.width > pl.x &&
+      p.x < pl.x + pl.width;
+    if (standing) {
+      pl.crumbleT = (pl.crumbleT ?? 0) + 1;
+      if (pl.crumbleT > 45) {
+        pl.gone = 180;
+        for (let i = 0; i < 8; i++) {
+          state.particles.push({
+            x: pl.x + Math.random() * pl.width,
+            y: pl.y,
+            vx: (Math.random() - 0.5) * 2,
+            vy: Math.random() * 2,
+            life: 30,
+            maxLife: 30,
+            color: "#e2e8f0",
+            size: 3,
+          });
+        }
+      }
+    } else if ((pl.crumbleT ?? 0) > 0) {
+      pl.crumbleT = Math.max(0, (pl.crumbleT ?? 0) - 1);
+    }
+  }
+}
+
+/** Jungle vines: touching a pad flings the knight forward and up. */
+function updateSwings(state: GameState) {
+  if (state.swings.length === 0) return;
+  const p = state.player;
+  if (state.swingBoost > 0) state.swingBoost--;
+  for (const s of state.swings) {
+    const box = { x: s.x - 26, y: s.y - 26, width: 52, height: 52 };
+    if (rectsOverlap(p, box) && state.swingBoost <= 0) {
+      state.swingBoost = 25;
+      p.vy = JUMP_FORCE * 1.15;
+      p.x += 26 * (p.facing === "left" ? -1 : 1);
+      p.onGround = false;
+      sfx.gust();
+      showMessage(state, "Vine swing!", 45);
+    }
   }
 }
 
@@ -2346,6 +2527,11 @@ function drawBackground(ctx: CanvasRenderingContext2D, state: GameState) {
     dusk: ["#4c1d95", "#f59e0b"],
     storm: ["#1e293b", "#475569"],
     sunset: ["#f97316", "#fcd34d"],
+    night: ["#020617", "#1e293b"],
+    sand: ["#b45309", "#fde68a"],
+    ice: ["#93c5fd", "#f8fafc"],
+    ember: ["#450a0a", "#f97316"],
+    deep: ["#082f49", "#0e7490"],
   };
   const pair = state.sky !== "clear" && state.scene === "level" ? skyStops[state.sky] : stops[b];
   gradient.addColorStop(0, pair[0]);
@@ -2591,6 +2777,87 @@ function drawFogOverlay(ctx: CanvasRenderingContext2D, state: GameState) {
   g.addColorStop(1, "rgba(226,232,240,0.92)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+/** Night chapter: everything is black except a lantern circle around the knight. */
+function drawDarknessOverlay(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!state.darkness) return;
+  const cx = state.player.x - state.cameraX + state.player.width / 2;
+  const cy = state.player.y + state.player.height / 2;
+  const g = ctx.createRadialGradient(cx, cy, 40, cx, cy, 260);
+  g.addColorStop(0, "rgba(2,6,23,0)");
+  g.addColorStop(0.45, "rgba(2,6,23,0.35)");
+  g.addColorStop(1, "rgba(2,6,23,0.95)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+/** Beach chapter: the sea line creeping up the shore. */
+function drawTideWater(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!state.tide) return;
+  const y = state.tideY;
+  ctx.fillStyle = "rgba(14,165,233,0.45)";
+  ctx.fillRect(0, y, CANVAS_WIDTH, CANVAS_HEIGHT - y);
+  ctx.strokeStyle = "rgba(224,242,254,0.8)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let x = 0; x <= CANVAS_WIDTH; x += 20) {
+    const wy = y + Math.sin((x + state.tideT * 3) / 60) * 5;
+    if (x === 0) ctx.moveTo(x, wy);
+    else ctx.lineTo(x, wy);
+  }
+  ctx.stroke();
+}
+
+/** Jungle chapter: hanging vine pads that fling the knight along. */
+function drawSwings(ctx: CanvasRenderingContext2D, state: GameState, now: number) {
+  for (const s of state.swings) {
+    const x = s.x - state.cameraX;
+    if (x < -60 || x > CANVAS_WIDTH + 60) continue;
+    const sway = Math.sin(now / 400 + s.x) * 8;
+    ctx.strokeStyle = "#166534";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.quadraticCurveTo(x + sway, s.y / 2, x + sway, s.y);
+    ctx.stroke();
+    ctx.fillStyle = "#4ade80";
+    ctx.beginPath();
+    ctx.arc(x + sway, s.y, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#166534";
+    ctx.beginPath();
+    ctx.arc(x + sway, s.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Castle chapter: flames bursting out of the floor. */
+function drawFireJets(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const j of state.jets) {
+    const x = j.x - state.cameraX;
+    if (x < -60 || x > CANVAS_WIDTH + 60) continue;
+    const t = (state.jetTimer + j.phase) % 150;
+    if (t < 80) {
+      // A warm glow warns before the jet fires.
+      ctx.fillStyle = "rgba(249,115,22,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(x, GROUND_Y - 4, 20, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    const grow = t < 100 ? (t - 80) / 20 : 1;
+    const h = 130 * grow;
+    const g = ctx.createLinearGradient(0, GROUND_Y, 0, GROUND_Y - h);
+    g.addColorStop(0, "rgba(251,191,36,0.95)");
+    g.addColorStop(1, "rgba(239,68,68,0.1)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - 16, GROUND_Y);
+    ctx.quadraticCurveTo(x, GROUND_Y - h * 1.1, x + 16, GROUND_Y);
+    ctx.closePath();
+    ctx.fill();
+  }
 }
 
 /** Acorns tumbling down from the treetops. */
@@ -4244,11 +4511,19 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     for (const platform of state.platforms) {
       if (platform.y === GROUND_Y && !platform.axis) continue;
       if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
+      if (platform.gone && platform.gone > 0) continue;
+      const shake = platform.crumbleT && platform.crumbleT > 0 ? (Math.random() - 0.5) * 3 : 0;
+      ctx.save();
+      ctx.translate(shake, 0);
+      if (platform.crumbleT && platform.crumbleT > 20) ctx.globalAlpha = 0.6;
       drawPlatform(ctx, platform, state.cameraX, state.biome);
+      ctx.restore();
     }
 
     const now = Date.now();
     for (const b of state.bounces) drawMushroom(ctx, b, state.cameraX, now);
+    drawSwings(ctx, state, now);
+    drawFireJets(ctx, state);
 
     for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
     for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
@@ -4269,7 +4544,9 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
 
     drawFallers(ctx, state);
     drawParticles(ctx, state);
+    drawTideWater(ctx, state);
     drawFogOverlay(ctx, state);
+    drawDarknessOverlay(ctx, state);
 
     if (state.timeLimit > 0) {
       const secs = Math.ceil(state.timeLeft / 60);

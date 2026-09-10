@@ -35,6 +35,20 @@ export type SceneDef = {
   falling?: boolean;
   /** Seconds to reach the flag before taking a hit. */
   timeLimit?: number;
+  /** Pitch black: only a lantern circle around the knight is lit. */
+  darkness?: boolean;
+  /** The sea rises and falls across the scene. */
+  tide?: boolean;
+  /** Underwater current drags the knight sideways. */
+  current?: boolean;
+  /** Ledges collapse a moment after the knight stands on them. */
+  crumbling?: boolean;
+  /** Vine pads that fling the knight forward and up. */
+  swings?: { x: number; y: number }[];
+  /** Fire jets burst out of the floor on a rhythm. */
+  firejets?: boolean;
+  /** Scorching heat drains hunger on its own. */
+  heat?: boolean;
 };
 
 export type LevelDef = {
@@ -241,6 +255,299 @@ const FOREST_SCENES: SceneDef[] = [
   },
 ];
 
+/* ---------------- Chapters 2-10: 10 scenes each ---------------- */
+
+/** The twist flags a chapter layers on top of the shared scene rhythm. */
+type ChapterTwist = Pick<
+  SceneDef,
+  "wind" | "slippery" | "fog" | "falling" | "darkness" | "tide" | "current" | "crumbling" | "firejets" | "heat"
+>;
+
+type ChapterConfig = {
+  /** Ten scene place names; the last one is the boss arena. */
+  names: string[];
+  /** Ten looks — time of day / weather. */
+  skies: SceneSky[];
+  /** The chapter's signature twist. */
+  twist: ChapterTwist;
+  twistHint: string;
+  /** Chapter-themed monster spawner. */
+  enemy: (x: number, i: number) => EnemySpawn;
+  /** Vine pads instead of mushrooms (jungle), or none at all (ocean). */
+  launch?: "mushroom" | "swing" | "none";
+  bossHint: string;
+};
+
+const SWING_Y = GROUND_Y - 150;
+
+function launchPads(cfg: ChapterConfig, spots: { x: number; y: number }[]): Partial<SceneDef> {
+  const mode = cfg.launch ?? "mushroom";
+  if (mode === "none") return {};
+  if (mode === "swing") return { swings: spots.map((s) => ({ x: s.x, y: SWING_Y })) };
+  return { bounces: spots };
+}
+
+/**
+ * Builds a 10-scene chapter using the rhythm of Sunny Forest:
+ * warm-up, platforming, gauntlet, the chapter twist, moving platforms,
+ * timed run, launch pads, twist at full strength, everything mixed, boss.
+ */
+function buildChapter(cfg: ChapterConfig): SceneDef[] {
+  const n = (i: number) => `Scene ${i + 1} — ${cfg.names[i]}`;
+  const sky = (i: number) => cfg.skies[i]!;
+  const twist = cfg.twist;
+
+  return [
+    {
+      name: n(0),
+      width: 1800,
+      sky: sky(0),
+      platforms: [plat(320, 430, 180), plat(680, 360, 170), plat(1080, 420, 180), plat(1420, 350, 160)],
+      enemies: [cfg.enemy(700, 0), cfg.enemy(1250, 1)],
+      chests: [chest(380, "food"), chest(1200, "bandage")],
+      hint: "A calm start — find your footing.",
+    },
+    {
+      name: n(1),
+      width: 2200,
+      sky: sky(1),
+      platforms: [
+        plat(260, 430, 150), plat(480, 350, 140), plat(700, 430, 150), plat(920, 350, 140),
+        plat(1140, 430, 150), plat(1360, 350, 140), plat(1580, 430, 150), plat(1800, 350, 140),
+      ],
+      enemies: [cfg.enemy(1050, 0)],
+      chests: [chest(520, "food", 350 - 24), chest(1640, "food", 430 - 24)],
+      hint: "Climb the steps — pure jumping practice.",
+    },
+    {
+      name: n(2),
+      width: 2500,
+      sky: sky(2),
+      platforms: [plat(900, 400, 160), plat(1700, 400, 160)],
+      enemies: [cfg.enemy(480, 0), cfg.enemy(860, 1), cfg.enemy(1240, 2), cfg.enemy(1620, 3), cfg.enemy(2000, 4)],
+      chests: [chest(320, "bandage"), chest(1500, "food")],
+      hint: "A whole pack blocks the path — fight your way through!",
+    },
+    {
+      name: n(3),
+      width: 2300,
+      sky: sky(3),
+      ...twist,
+      platforms: [plat(340, 420, 150), plat(620, 340, 140), plat(980, 420, 150), plat(1340, 340, 140), plat(1700, 420, 150)],
+      enemies: [cfg.enemy(800, 0), cfg.enemy(1500, 1)],
+      chests: [chest(400, "food"), chest(1400, "bandage", 340 - 24)],
+      hint: cfg.twistHint,
+    },
+    {
+      name: n(4),
+      width: 2500,
+      sky: sky(4),
+      platforms: [
+        plat(300, 420, 150),
+        mplat(620, 400, 130, "y", 70, 0.02),
+        plat(900, 300, 150),
+        mplat(1250, 400, 130, "x", 90, 0.018),
+        plat(1600, 420, 150),
+        mplat(1950, 390, 130, "y", 80, 0.022),
+      ],
+      enemies: [cfg.enemy(1050, 0)],
+      chests: [chest(950, "food", 300 - 24), chest(1650, "bandage", 420 - 24)],
+      hint: "Ride the moving platforms!",
+    },
+    {
+      name: n(5),
+      width: 2900,
+      sky: sky(5),
+      timeLimit: 60,
+      platforms: [plat(500, 420, 160), plat(1100, 360, 150), plat(1700, 420, 160), plat(2300, 360, 150)],
+      enemies: [cfg.enemy(800, 0), cfg.enemy(1500, 1), cfg.enemy(2200, 2)],
+      chests: [chest(380, "bandage"), chest(2650, "food")],
+      hint: "Race to the flag — 60 seconds, and no food on the way!",
+    },
+    {
+      name: n(6),
+      width: 2400,
+      sky: sky(6),
+      ...(cfg.launch === "none" ? { ...twist } : {}),
+      platforms: [
+        plat(560, 250, 150), plat(900, 430, 150), plat(1180, 220, 150), plat(1560, 430, 150), plat(1840, 250, 150),
+      ],
+      ...launchPads(cfg, [
+        { x: 380, y: MUSHROOM_Y }, { x: 1020, y: MUSHROOM_Y }, { x: 1700, y: MUSHROOM_Y },
+      ]),
+      enemies: [cfg.enemy(700, 0), cfg.enemy(1400, 1)],
+      chests: [chest(600, "food", 250 - 24), chest(1220, "firstaid", 220 - 24), chest(1880, "food", 250 - 24)],
+      hint:
+        cfg.launch === "swing"
+          ? "Grab the vine pads to fly across the gaps!"
+          : cfg.launch === "none"
+          ? "High ledges and deep water — take the long way up."
+          : "Bounce on the pads to reach the high ledges!",
+    },
+    {
+      name: n(7),
+      width: 2400,
+      sky: sky(7),
+      ...twist,
+      platforms: [plat(420, 420, 160), plat(1020, 360, 150), plat(1620, 420, 160)],
+      enemies: [cfg.enemy(700, 0), cfg.enemy(1500, 1), cfg.enemy(1900, 2)],
+      chests: [chest(360, "arrows"), chest(1400, "food")],
+      hint: `${cfg.twistHint} And it is much worse up here!`,
+    },
+    {
+      name: n(8),
+      width: 2700,
+      sky: sky(8),
+      ...twist,
+      wind: true,
+      platforms: [
+        plat(360, 420, 150),
+        mplat(760, 390, 130, "y", 70, 0.02),
+        plat(1150, 300, 150),
+        plat(1500, 420, 150),
+        plat(2000, 360, 150),
+      ],
+      ...launchPads(cfg, [{ x: 1040, y: MUSHROOM_Y }]),
+      enemies: [cfg.enemy(600, 0), cfg.enemy(1350, 1), cfg.enemy(1900, 2), cfg.enemy(2400, 3)],
+      chests: [chest(320, "food"), chest(1200, "bandage", 300 - 24), chest(2200, "food")],
+      hint: "A bit of everything — stay sharp!",
+    },
+    {
+      name: n(9),
+      width: 2200,
+      sky: sky(9),
+      platforms: [plat(320, 430, 170), plat(700, 350, 150)],
+      enemies: [cfg.enemy(620, 0)],
+      chests: [chest(300, "firstaid"), chest(820, "food")],
+      boss: true,
+      hint: cfg.bossHint,
+    },
+  ];
+}
+
+function ground(kind: EnemyKind) {
+  return (x: number): EnemySpawn => ({ kind, x, patrolStart: x - 110, patrolEnd: x + 110 });
+}
+
+function flyer(kind: EnemyKind, baseY = 270) {
+  return (x: number, i: number): EnemySpawn => ({
+    kind,
+    x,
+    y: baseY + (i % 3) * 40,
+    patrolStart: x - 160,
+    patrolEnd: x + 160,
+  });
+}
+
+const NIGHT_SCENES = buildChapter({
+  names: [
+    "Moonlit Trail", "Whispering Pines", "Hollow Grove", "The Black Wood", "Silver Brook",
+    "Owl's Hunt", "Toadstool Ring", "Starless Path", "Shadow Ridge", "The Great Owl's Roost",
+  ],
+  skies: ["night", "night", "rain", "night", "dusk", "night", "dusk", "night", "storm", "storm"],
+  twist: { darkness: true },
+  twistHint: "Pitch black — only your lantern lights the way!",
+  enemy: ground("tentacle"),
+  bossHint: "The Great Owl swoops in — grab the TNT!",
+});
+
+const BEACH_SCENES = buildChapter({
+  names: [
+    "Warm Sands", "Driftwood Cove", "Crab Flats", "The Rising Tide", "Palm Bluffs",
+    "Sunset Run", "Bubble Reef", "Storm Surf", "Broken Pier", "The Giant Crab's Bay",
+  ],
+  skies: ["dawn", "golden", "clear", "grey", "golden", "sunset", "clear", "storm", "storm", "sunset"],
+  twist: { tide: true },
+  twistHint: "The tide is coming in — climb before the water reaches you!",
+  enemy: ground("tentacle"),
+  bossHint: "The Giant Crab clacks its claws — grab the TNT!",
+});
+
+const OCEAN_SCENES = buildChapter({
+  names: [
+    "Shallow Reef", "Kelp Forest", "Coral Maze", "The Cold Current", "Sunken Mast",
+    "Trench Run", "Pillar Ruins", "Riptide Deep", "The Abyss Road", "The Shark's Lair",
+  ],
+  skies: ["deep", "deep", "deep", "deep", "deep", "deep", "deep", "deep", "deep", "deep"],
+  twist: { current: true },
+  twistHint: "A strong current drags you sideways — swim with it, not against it!",
+  enemy: flyer("fish", 260),
+  launch: "none",
+  bossHint: "The Giant Shark circles — grab the TNT!",
+});
+
+const SKY_SCENES = buildChapter({
+  names: [
+    "Cloud Steps", "Windy Heights", "Feather Pass", "Crumbling Clouds", "Rainbow Bridge",
+    "Sunrise Climb", "Thermal Vents", "The Grey Ceiling", "Thunderhead", "The Thunder Cloud",
+  ],
+  skies: ["clear", "golden", "dawn", "grey", "golden", "dawn", "mist", "grey", "storm", "storm"],
+  twist: { crumbling: true },
+  twistHint: "These clouds fall apart — don't stand still!",
+  enemy: flyer("winged", 250),
+  bossHint: "The Thunder Cloud rumbles — grab the TNT!",
+});
+
+const JUNGLE_SCENES = buildChapter({
+  names: [
+    "Green Wall", "Creeper Steps", "Bug Hollow", "Vine Canopy", "Ruined Temple",
+    "Monsoon Run", "Swinging Grove", "Storm Canopy", "Deep Thicket", "The Gorilla's Clearing",
+  ],
+  skies: ["golden", "mist", "clear", "rain", "golden", "rain", "clear", "storm", "rain", "storm"],
+  twist: { wind: true, fog: true },
+  twistHint: "Thick steam and gusts in the canopy — swing across carefully!",
+  enemy: ground("insect"),
+  launch: "swing",
+  bossHint: "The Giant Gorilla pounds its chest — grab the TNT!",
+});
+
+const SNOW_SCENES = buildChapter({
+  names: [
+    "First Snow", "Frozen Pines", "Wolf Flats", "Black Ice", "Frost Ridge",
+    "Blizzard Run", "Snowdrift Bounce", "White Out", "Glacier Edge", "The Polar Bear's Den",
+  ],
+  skies: ["ice", "ice", "grey", "ice", "golden", "grey", "ice", "storm", "ice", "storm"],
+  twist: { slippery: true, wind: true },
+  twistHint: "Black ice! You slide, and the wind pushes you along.",
+  enemy: ground("furry"),
+  bossHint: "The Polar Bear roars — grab the TNT!",
+});
+
+const DESERT_SCENES = buildChapter({
+  names: [
+    "Dune Road", "Sun Steps", "Scarab Flats", "The Sandstorm", "Oasis Rocks",
+    "Noon Race", "Cactus Springs", "Blinding Sands", "Bone Valley", "The Scorpion's Pit",
+  ],
+  skies: ["sand", "clear", "golden", "sand", "golden", "clear", "sunset", "sand", "dusk", "sand"],
+  twist: { fog: true, wind: true, heat: true },
+  twistHint: "A sandstorm! You can hardly see, and the heat eats your hunger.",
+  enemy: ground("insect"),
+  bossHint: "The Giant Scorpion clicks its tail — grab the TNT!",
+});
+
+const MOUNTAIN_SCENES = buildChapter({
+  names: [
+    "Base Camp", "Stone Stairs", "Yeti Tracks", "Rockfall Pass", "Icy Ledges",
+    "Summit Race", "Snow Cushions", "The Avalanche", "Wizard's Approach", "The Wizard's Peak",
+  ],
+  skies: ["ice", "grey", "ice", "storm", "ice", "golden", "ice", "storm", "dusk", "storm"],
+  twist: { falling: true, slippery: true },
+  twistHint: "Rocks tumble down the slope and the ice is slick — keep moving!",
+  enemy: ground("furry"),
+  bossHint: "The Wizard raises his staff — grab the TNT!",
+});
+
+const CASTLE_SCENES = buildChapter({
+  names: [
+    "Castle Gate", "Broken Stairs", "Guard Hall", "The Fire Floor", "Throne Corridor",
+    "Collapsing Wing", "Chapel Ruins", "Furnace Hall", "Dragon's Landing", "The Dragon's Lair",
+  ],
+  skies: ["ember", "ember", "storm", "ember", "ember", "storm", "ember", "ember", "storm", "ember"],
+  twist: { firejets: true },
+  twistHint: "Fire bursts from the floor — watch the sparks and time your run!",
+  enemy: flyer("winged", 260),
+  bossHint: "The Dragon lands — grab the TNT and save the princess!",
+});
 
 export const LEVELS: LevelDef[] = [
   {
@@ -274,6 +581,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "tentacle", x: 1920, patrolStart: 1860, patrolEnd: 2140 },
     ],
     chests: [chest(300, "food"), chest(1120, "firstaid"), chest(1800, "bandage")],
+    scenes: NIGHT_SCENES,
   },
   {
     name: "Level 3 — Sunny Beach",
@@ -289,6 +597,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "tentacle", x: 2020, patrolStart: 1960, patrolEnd: 2260 },
     ],
     chests: [chest(380, "food"), chest(1200, "bandage"), chest(2100, "firstaid")],
+    scenes: BEACH_SCENES,
   },
   {
     name: "Level 4 — The Deep Ocean",
@@ -305,47 +614,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "fish", x: 1900, patrolStart: 1760, patrolEnd: 2200, y: 260 },
     ],
     chests: [chest(420, "food"), chest(1220, "bandage"), chest(2060, "firstaid")],
-    scenes: [
-      {
-        name: "Scene 1 — Shallow Reef",
-        width: 2400,
-        platforms: [plat(340, 440, 180), plat(760, 330, 140), plat(1180, 440, 170), plat(1600, 340, 150)],
-        enemies: [
-          { kind: "fish", x: 520, patrolStart: 400, patrolEnd: 900, y: 320 },
-          { kind: "fish", x: 1000, patrolStart: 860, patrolEnd: 1360, y: 250 },
-          { kind: "fish", x: 1700, patrolStart: 1560, patrolEnd: 2000, y: 350 },
-        ],
-        chests: [chest(420, "food"), chest(1240, "bandage")],
-      },
-      {
-        name: "Scene 2 — Deep Trench",
-        width: 2800,
-        platforms: [
-          plat(300, 420, 140),
-          plat(640, 320, 120),
-          plat(1000, 430, 140),
-          plat(1360, 300, 120),
-          plat(1720, 420, 140),
-          plat(2100, 330, 130),
-        ],
-        enemies: [
-          { kind: "fish", x: 460, patrolStart: 360, patrolEnd: 820, y: 300 },
-          { kind: "fish", x: 900, patrolStart: 780, patrolEnd: 1240, y: 220 },
-          { kind: "fish", x: 1420, patrolStart: 1300, patrolEnd: 1780, y: 370 },
-          { kind: "fish", x: 1900, patrolStart: 1780, patrolEnd: 2260, y: 260 },
-          { kind: "tentacle", x: 2320, patrolStart: 2220, patrolEnd: 2560 },
-        ],
-        chests: [chest(360, "bandage"), chest(1300, "food"), chest(2160, "firstaid")],
-      },
-      {
-        name: "Scene 3 — The Shark's Lair",
-        width: 2200,
-        platforms: [plat(320, 420, 170), plat(700, 330, 150)],
-        enemies: [{ kind: "fish", x: 620, patrolStart: 480, patrolEnd: 900, y: 300 }],
-        chests: [chest(300, "firstaid"), chest(820, "food")],
-        boss: true,
-      },
-    ],
+    scenes: OCEAN_SCENES,
   },
   {
     name: "Level 5 — The High Sky",
@@ -369,6 +638,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "winged", x: 2200, patrolStart: 2040, patrolEnd: 2500, y: 260 },
     ],
     chests: [chest(280, "arrows"), chest(1080, "arrows"), chest(1560, "food"), chest(2260, "firstaid")],
+    scenes: SKY_SCENES,
   },
   {
     name: "Level 6 — Wild Jungle",
@@ -384,6 +654,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "insect", x: 2100, patrolStart: 2000, patrolEnd: 2400 },
     ],
     chests: [chest(320, "arrows"), chest(1140, "food"), chest(1960, "bandage")],
+    scenes: JUNGLE_SCENES,
   },
   {
     name: "Level 7 — Frozen Wastes",
@@ -399,6 +670,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "tentacle", x: 2180, patrolStart: 2080, patrolEnd: 2460 },
     ],
     chests: [chest(300, "firstaid"), chest(1160, "food"), chest(2020, "arrows")],
+    scenes: SNOW_SCENES,
   },
   {
     name: "Level 8 — Burning Desert",
@@ -414,6 +686,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "winged", x: 2100, patrolStart: 1940, patrolEnd: 2460, y: 290 },
     ],
     chests: [chest(300, "arrows"), chest(1120, "food"), chest(1900, "firstaid"), chest(2400, "arrows")],
+    scenes: DESERT_SCENES,
   },
   {
     name: "Level 9 — Snow Mountain",
@@ -430,6 +703,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "insect", x: 2500, patrolStart: 2400, patrolEnd: 2760 },
     ],
     chests: [chest(280, "firstaid"), chest(1080, "arrows"), chest(1780, "food"), chest(2420, "firstaid")],
+    scenes: MOUNTAIN_SCENES,
   },
   {
     name: "Level 10 — The Dragon's Castle",
@@ -445,6 +719,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "furry", x: 2300, patrolStart: 2200, patrolEnd: 2560 },
     ],
     chests: [chest(300, "firstaid"), chest(1160, "arrows"), chest(1960, "food"), chest(2500, "firstaid")],
+    scenes: CASTLE_SCENES,
   },
 ];
 
