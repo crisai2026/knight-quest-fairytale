@@ -422,7 +422,7 @@ export function createInitialState(): GameState {
   const state = loadVillage(createPlayer(progress), progress);
   state.mode = "menu";
   state.menuPrevMode = null;
-  state.menuCursor = 0;
+  state.menuCursor = hasSave() ? 0 : 1;
   state.cutsceneTimer = 0;
   state.cutscenePhase = 0;
   return state;
