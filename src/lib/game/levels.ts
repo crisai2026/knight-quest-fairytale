@@ -670,6 +670,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "tentacle", x: 2180, patrolStart: 2080, patrolEnd: 2460 },
     ],
     chests: [chest(300, "firstaid"), chest(1160, "food"), chest(2020, "arrows")],
+    scenes: SNOW_SCENES,
   },
   {
     name: "Level 8 — Burning Desert",
