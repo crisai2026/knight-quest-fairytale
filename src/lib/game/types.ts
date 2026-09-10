@@ -335,6 +335,12 @@ export type Platform = {
   baseX?: number;
   baseY?: number;
   moveT?: number;
+  /** Crumbling ledge: collapses shortly after the knight stands on it. */
+  crumble?: boolean;
+  /** Frames the knight has been standing on a crumbling ledge. */
+  crumbleT?: number;
+  /** Frames left before a collapsed ledge comes back. */
+  gone?: number;
 };
 
 /** A bouncy mushroom: landing on it launches the knight high up. */
