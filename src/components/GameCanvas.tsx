@@ -143,12 +143,10 @@ export function GameCanvas() {
   const stateRef = useRef<GameState>(createInitialState());
   const rafRef = useRef<number | null>(null);
   const [scale, setScale] = useState(1);
-  const [musicOn, setMusicOn] = useState(true);
   const [isTouch, setIsTouch] = useState(false);
   const [portrait, setPortrait] = useState(false);
 
   useEffect(() => {
-    setMusicOn(isMusicEnabled());
     setIsTouch(window.matchMedia("(pointer: coarse)").matches);
   }, []);
 
