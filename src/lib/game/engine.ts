@@ -1001,6 +1001,142 @@ function updateSceneTimer(state: GameState) {
   }
 }
 
+/** Deep-ocean current: drifts the knight sideways, switching every few seconds. */
+function updateCurrent(state: GameState) {
+  if (!state.current) return;
+  state.currentTimer++;
+  const cycle = state.currentTimer % 480;
+  if (cycle === 0) {
+    state.currentDir = state.currentDir === 1 ? -1 : 1;
+    showMessage(state, state.currentDir === 1 ? "The current pulls forward!" : "The current pushes back!", 90);
+  }
+  state.player.x += 0.9 * state.currentDir;
+  if (Math.random() < 0.4) {
+    state.particles.push({
+      x: state.cameraX + (state.currentDir === 1 ? -10 : CANVAS_WIDTH + 10),
+      y: 60 + Math.random() * 420,
+      vx: state.currentDir * (3 + Math.random() * 2),
+      vy: (Math.random() - 0.5) * 0.6,
+      life: 90,
+      maxLife: 90,
+      color: "#bae6fd",
+      size: 2,
+    });
+  }
+}
+
+/** Beach tide: the sea creeps up the shore, hurting the knight when it reaches him. */
+function updateTide(state: GameState) {
+  if (!state.tide) return;
+  state.tideT++;
+  const swell = (Math.sin(state.tideT / 240) + 1) / 2; // 0..1
+  state.tideY = GROUND_Y - 20 - swell * 90;
+  const p = state.player;
+  if (p.y + p.height > state.tideY && p.invulnerable <= 0) {
+    p.health = Math.max(0, p.health - 1);
+    p.invulnerable = 70;
+    p.vy = -5;
+    sfx.hurt();
+    showMessage(state, "The tide caught you — get higher!", 90);
+  }
+}
+
+/** Desert heat: hunger drains even when standing still. */
+function updateHeat(state: GameState) {
+  if (!state.heat) return;
+  const p = state.player;
+  p.hunger = Math.max(0, p.hunger - 0.004);
+}
+
+/** Castle fire jets: bursts of flame on a rhythm. */
+function updateJets(state: GameState) {
+  if (state.jets.length === 0) return;
+  state.jetTimer++;
+  const p = state.player;
+  for (const j of state.jets) {
+    const t = (state.jetTimer + j.phase) % 150;
+    const firing = t >= 100;
+    if (!firing) continue;
+    const box = { x: j.x - 16, y: GROUND_Y - 130, width: 32, height: 130 };
+    if (rectsOverlap(p, box) && p.invulnerable <= 0) {
+      p.health = Math.max(0, p.health - 1);
+      p.invulnerable = 60;
+      p.vy = -6;
+      sfx.hurt();
+      showMessage(state, "Burned by the fire jet!", 60);
+    }
+    if (Math.random() < 0.5) {
+      state.particles.push({
+        x: j.x + (Math.random() - 0.5) * 20,
+        y: GROUND_Y - 20 - Math.random() * 100,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -2 - Math.random() * 2,
+        life: 22,
+        maxLife: 22,
+        color: Math.random() < 0.5 ? "#f97316" : "#fbbf24",
+        size: 3,
+      });
+    }
+  }
+}
+
+/** Cloud chapter: ledges collapse shortly after the knight lands on them. */
+function updateCrumbling(state: GameState) {
+  if (!state.crumbling) return;
+  const p = state.player;
+  for (const pl of state.platforms) {
+    if (!pl.crumble) continue;
+    if (pl.gone && pl.gone > 0) {
+      pl.gone--;
+      if (pl.gone === 0) pl.crumbleT = 0;
+      continue;
+    }
+    const standing =
+      p.onGround &&
+      Math.abs(p.y + p.height - pl.y) < 6 &&
+      p.x + p.width > pl.x &&
+      p.x < pl.x + pl.width;
+    if (standing) {
+      pl.crumbleT = (pl.crumbleT ?? 0) + 1;
+      if (pl.crumbleT > 45) {
+        pl.gone = 180;
+        for (let i = 0; i < 8; i++) {
+          state.particles.push({
+            x: pl.x + Math.random() * pl.width,
+            y: pl.y,
+            vx: (Math.random() - 0.5) * 2,
+            vy: Math.random() * 2,
+            life: 30,
+            maxLife: 30,
+            color: "#e2e8f0",
+            size: 3,
+          });
+        }
+      }
+    } else if ((pl.crumbleT ?? 0) > 0) {
+      pl.crumbleT = Math.max(0, (pl.crumbleT ?? 0) - 1);
+    }
+  }
+}
+
+/** Jungle vines: touching a pad flings the knight forward and up. */
+function updateSwings(state: GameState) {
+  if (state.swings.length === 0) return;
+  const p = state.player;
+  if (state.swingBoost > 0) state.swingBoost--;
+  for (const s of state.swings) {
+    const box = { x: s.x - 26, y: s.y - 26, width: 52, height: 52 };
+    if (rectsOverlap(p, box) && state.swingBoost <= 0) {
+      state.swingBoost = 25;
+      p.vy = JUMP_FORCE * 1.15;
+      p.x += 26 * (p.facing === "left" ? -1 : 1);
+      p.onGround = false;
+      sfx.gust();
+      showMessage(state, "Vine swing!", 45);
+    }
+  }
+}
+
 /* ---------------- Village hub ---------------- */
 
 /** Feet position of the knight in the top-down village. */
