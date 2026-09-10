@@ -638,6 +638,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "winged", x: 2200, patrolStart: 2040, patrolEnd: 2500, y: 260 },
     ],
     chests: [chest(280, "arrows"), chest(1080, "arrows"), chest(1560, "food"), chest(2260, "firstaid")],
+    scenes: SKY_SCENES,
   },
   {
     name: "Level 6 — Wild Jungle",
