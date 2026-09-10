@@ -2024,11 +2024,9 @@ export function handleKeyDown(state: GameState, key: string) {
     handleMenuKey(state, key);
     return;
   }
-  if (key === "escape" && (state.mode === "playing" || state.mode === "dialog" || state.mode === "shop")) {
-    if (state.mode === "playing") {
-      openMenu(state);
-      return;
-    }
+  if (key === "escape" && state.mode === "playing") {
+    openMenu(state);
+    return;
   }
   if (state.mode === "intro") {
     endIntro(state);
