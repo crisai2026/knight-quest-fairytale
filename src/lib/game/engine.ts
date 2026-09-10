@@ -4007,6 +4007,11 @@ function drawParticles(ctx: CanvasRenderingContext2D, state: GameState) {
 export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+  if (state.mode === "menu") {
+    drawMenuScreen(ctx, state);
+    return;
+  }
+
   if (state.mode === "intro") {
     drawIntro(ctx, state);
     return;
