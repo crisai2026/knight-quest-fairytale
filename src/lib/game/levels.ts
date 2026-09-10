@@ -199,14 +199,14 @@ const FOREST_SCENES: SceneDef[] = [
     hint: "Bounce on the big mushrooms to reach the high ledges!",
   },
   {
-    // 8. Air attack: winged monsters swoop above the path.
+    // 8. Stormy ridge: more platforming while the storm rages.
     name: `Scene 8 — ${FOREST_SCENE_NAMES[7]}`,
     width: 2400,
     sky: "storm",
     platforms: [plat(420, 420, 160), plat(1020, 360, 150), plat(1620, 420, 160)],
-    enemies: [winged(500), winged(1000, 230), winged(1500), winged(2000, 240), furry(1300)],
+    enemies: [furry(700), furry(1500), furry(1900)],
     chests: [chest(360, "arrows"), chest(1400, "food")],
-    hint: "Winged beasts circle overhead — poke up or shoot!",
+    hint: "The storm rages — keep your footing on the high ridge!",
   },
   {
     // 9. Mixed review: wind + a moving platform + a mushroom + monsters.
@@ -224,7 +224,7 @@ const FOREST_SCENES: SceneDef[] = [
       plat(2000, 360, 150),
     ],
     bounces: [{ x: 1040, y: MUSHROOM_Y }],
-    enemies: [furry(600), furry(1350), furry(1900), winged(2300, 250)],
+    enemies: [furry(600), furry(1350), furry(1900), furry(2400)],
     chests: [chest(320, "food"), chest(1200, "bandage", 300 - 24), chest(2200, "food")],
     hint: "A bit of everything — stay sharp!",
   },
