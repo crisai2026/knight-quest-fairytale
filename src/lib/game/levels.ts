@@ -581,6 +581,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "tentacle", x: 1920, patrolStart: 1860, patrolEnd: 2140 },
     ],
     chests: [chest(300, "food"), chest(1120, "firstaid"), chest(1800, "bandage")],
+    scenes: NIGHT_SCENES,
   },
   {
     name: "Level 3 — Sunny Beach",
