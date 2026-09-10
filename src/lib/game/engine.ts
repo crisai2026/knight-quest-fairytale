@@ -1946,6 +1946,8 @@ function buyItem(state: GameState, key: string) {
 export function updateGame(state: GameState) {
   playMusic(state.celebrateTimer > 0 ? null : musicForState(state));
 
+  if (state.mode === "menu") return;
+
   if (state.mode === "won" || state.mode === "gameover") return;
 
   if (state.mode === "intro") {
