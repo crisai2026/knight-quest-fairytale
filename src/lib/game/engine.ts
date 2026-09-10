@@ -420,7 +420,9 @@ export function loadVillage(carry: Player, progress: Progress): GameState {
 export function createInitialState(): GameState {
   const progress = loadProgress();
   const state = loadVillage(createPlayer(progress), progress);
-  state.mode = "intro";
+  state.mode = "menu";
+  state.menuPrevMode = null;
+  state.menuCursor = 0;
   state.cutsceneTimer = 0;
   state.cutscenePhase = 0;
   return state;
