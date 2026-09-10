@@ -719,6 +719,7 @@ export const LEVELS: LevelDef[] = [
       { kind: "furry", x: 2300, patrolStart: 2200, patrolEnd: 2560 },
     ],
     chests: [chest(300, "firstaid"), chest(1160, "arrows"), chest(1960, "food"), chest(2500, "firstaid")],
+    scenes: CASTLE_SCENES,
   },
 ];
 
