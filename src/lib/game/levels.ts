@@ -494,7 +494,7 @@ const JUNGLE_SCENES = buildChapter({
     "Monsoon Run", "Swinging Grove", "Storm Canopy", "Deep Thicket", "The Gorilla's Clearing",
   ],
   skies: ["golden", "mist", "clear", "rain", "golden", "rain", "clear", "storm", "rain", "storm"],
-  twist: { swings: undefined, wind: true, fog: true } as ChapterTwist,
+  twist: { wind: true, fog: true },
   twistHint: "Thick steam and gusts in the canopy — swing across carefully!",
   enemy: ground("insect"),
   launch: "swing",
