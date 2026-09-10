@@ -502,6 +502,126 @@ export function restartGame(state: GameState) {
   replaceState(state, loadVillage(state.player, progress));
 }
 
+/* ---------------- Game menu ---------------- */
+
+type MenuItem = { key: string; label: string; enabled: boolean };
+
+const MENU_BTN = { x: 620, y: 210, w: 300, h: 54, gap: 16 };
+
+export function menuItems(state: GameState): MenuItem[] {
+  const paused = state.menuPrevMode !== null;
+  const saved = hasSave();
+  const items: MenuItem[] = [];
+  if (paused) items.push({ key: "resume", label: "Resume", enabled: true });
+  else items.push({ key: "continue", label: "Continue", enabled: saved });
+  items.push({ key: "new", label: "Start From The Beginning", enabled: true });
+  if (saved) items.push({ key: "restart", label: "Restart Game", enabled: true });
+  items.push({ key: "music", label: `Music: ${isMusicEnabled() ? "On" : "Off"}`, enabled: true });
+  return items;
+}
+
+function menuItemRect(i: number) {
+  return { x: MENU_BTN.x, y: MENU_BTN.y + i * (MENU_BTN.h + MENU_BTN.gap), w: MENU_BTN.w, h: MENU_BTN.h };
+}
+
+/** Open the menu over whatever is happening right now. */
+export function openMenu(state: GameState) {
+  if (state.mode === "menu") return;
+  state.menuPrevMode = state.mode;
+  state.menuCursor = 0;
+  state.menuConfirm = false;
+  state.mode = "menu";
+}
+
+function beginNewGame(state: GameState) {
+  resetProgress();
+  const progress = loadProgress();
+  replaceState(state, loadVillage(createPlayer(progress), progress));
+  state.mode = "intro";
+  state.menuPrevMode = null;
+  state.menuConfirm = false;
+  state.cutsceneTimer = 0;
+  state.cutscenePhase = 0;
+  state.started = true;
+}
+
+function continueGame(state: GameState) {
+  const progress = loadProgress();
+  replaceState(state, loadVillage(createPlayer(progress), progress));
+  state.mode = "playing";
+  state.menuPrevMode = null;
+  state.started = true;
+  showMessage(state, "Read the map board, then step into the portal.", 200);
+}
+
+function activateMenuItem(state: GameState, item: MenuItem) {
+  if (!item.enabled) {
+    sfx.deny();
+    return;
+  }
+  if (item.key === "music") {
+    setMusicEnabled(!isMusicEnabled());
+    sfx.talk();
+    return;
+  }
+  if (item.key === "resume") {
+    sfx.talk();
+    state.mode = state.menuPrevMode ?? "playing";
+    state.menuPrevMode = null;
+    state.menuConfirm = false;
+    return;
+  }
+  if (item.key === "continue") {
+    sfx.talk();
+    continueGame(state);
+    return;
+  }
+  // new / restart: both wipe the save and replay the story from page one.
+  if (hasSave() && !state.menuConfirm) {
+    state.menuConfirm = true;
+    sfx.deny();
+    return;
+  }
+  sfx.talk();
+  beginNewGame(state);
+}
+
+export function handleMenuKey(state: GameState, key: string) {
+  const items = menuItems(state);
+  if (key === "w" || key === "arrowup") {
+    state.menuCursor = (state.menuCursor - 1 + items.length) % items.length;
+    state.menuConfirm = false;
+  } else if (key === "s" || key === "arrowdown") {
+    state.menuCursor = (state.menuCursor + 1) % items.length;
+    state.menuConfirm = false;
+  } else if (key === "enter" || key === "e" || key === " ") {
+    const item = items[state.menuCursor];
+    if (item) activateMenuItem(state, item);
+  } else if (key === "escape") {
+    if (state.menuConfirm) state.menuConfirm = false;
+    else if (state.menuPrevMode !== null) {
+      state.mode = state.menuPrevMode;
+      state.menuPrevMode = null;
+    }
+  }
+}
+
+/** Canvas click on the menu screen. Returns true when it hit a button. */
+export function handleMenuClick(state: GameState, x: number, y: number): boolean {
+  if (state.mode !== "menu") return false;
+  const items = menuItems(state);
+  for (let i = 0; i < items.length; i++) {
+    const r = menuItemRect(i);
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+      state.menuCursor = i;
+      const item = items[i];
+      if (item) activateMenuItem(state, item);
+      return true;
+    }
+  }
+  return true; // clicks elsewhere on the menu never fall through to the game
+}
+
 /* ---------------- Helpers ---------------- */
 
 function rectsOverlap(
