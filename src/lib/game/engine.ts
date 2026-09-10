@@ -4061,8 +4061,8 @@ function drawMenuArt(ctx: CanvasRenderingContext2D, t: number) {
   ctx.restore();
 
   // Wizard Zarvok in the mist.
-  const wx = 340;
-  const wy = 430;
+  const wx = 78;
+  const wy = 512;
   ctx.fillStyle = "#3b0764";
   ctx.beginPath();
   ctx.moveTo(wx, wy - 80);
