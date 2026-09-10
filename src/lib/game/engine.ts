@@ -371,6 +371,25 @@ export function loadLevel(
   state.fallerTimer = scene?.falling === true ? 1 : 0;
   state.timeLimit = (scene?.timeLimit ?? 0) * 60;
   state.timeLeft = state.timeLimit;
+  state.darkness = scene?.darkness === true;
+  state.tide = scene?.tide === true;
+  state.tideT = 0;
+  state.tideY = GROUND_Y;
+  state.current = scene?.current === true;
+  state.currentTimer = 0;
+  state.currentDir = 1;
+  state.crumbling = scene?.crumbling === true;
+  state.swings = (scene?.swings ?? []).map((s) => ({ ...s }));
+  state.swingBoost = 0;
+  state.swingDir = 1;
+  state.heat = scene?.heat === true;
+  state.jets = scene?.firejets === true
+    ? Array.from({ length: Math.max(3, Math.floor(width / 620)) }, (_, i) => ({
+        x: 420 + i * 620,
+        phase: (i * 37) % 120,
+      }))
+    : [];
+  state.jetTimer = 0;
   state.enemies = (scene ? scene.enemies : level.enemies).map(makeEnemy);
   state.chests = (scene ? scene.chests : level.chests).map((c: Chest) => ({ ...c }));
   state.platforms = [
