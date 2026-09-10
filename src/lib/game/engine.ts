@@ -2779,6 +2779,87 @@ function drawFogOverlay(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 }
 
+/** Night chapter: everything is black except a lantern circle around the knight. */
+function drawDarknessOverlay(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!state.darkness) return;
+  const cx = state.player.x - state.cameraX + state.player.width / 2;
+  const cy = state.player.y + state.player.height / 2;
+  const g = ctx.createRadialGradient(cx, cy, 40, cx, cy, 260);
+  g.addColorStop(0, "rgba(2,6,23,0)");
+  g.addColorStop(0.45, "rgba(2,6,23,0.35)");
+  g.addColorStop(1, "rgba(2,6,23,0.95)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+/** Beach chapter: the sea line creeping up the shore. */
+function drawTideWater(ctx: CanvasRenderingContext2D, state: GameState) {
+  if (!state.tide) return;
+  const y = state.tideY;
+  ctx.fillStyle = "rgba(14,165,233,0.45)";
+  ctx.fillRect(0, y, CANVAS_WIDTH, CANVAS_HEIGHT - y);
+  ctx.strokeStyle = "rgba(224,242,254,0.8)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let x = 0; x <= CANVAS_WIDTH; x += 20) {
+    const wy = y + Math.sin((x + state.tideT * 3) / 60) * 5;
+    if (x === 0) ctx.moveTo(x, wy);
+    else ctx.lineTo(x, wy);
+  }
+  ctx.stroke();
+}
+
+/** Jungle chapter: hanging vine pads that fling the knight along. */
+function drawSwings(ctx: CanvasRenderingContext2D, state: GameState, now: number) {
+  for (const s of state.swings) {
+    const x = s.x - state.cameraX;
+    if (x < -60 || x > CANVAS_WIDTH + 60) continue;
+    const sway = Math.sin(now / 400 + s.x) * 8;
+    ctx.strokeStyle = "#166534";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.quadraticCurveTo(x + sway, s.y / 2, x + sway, s.y);
+    ctx.stroke();
+    ctx.fillStyle = "#4ade80";
+    ctx.beginPath();
+    ctx.arc(x + sway, s.y, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#166534";
+    ctx.beginPath();
+    ctx.arc(x + sway, s.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Castle chapter: flames bursting out of the floor. */
+function drawFireJets(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const j of state.jets) {
+    const x = j.x - state.cameraX;
+    if (x < -60 || x > CANVAS_WIDTH + 60) continue;
+    const t = (state.jetTimer + j.phase) % 150;
+    if (t < 80) {
+      // A warm glow warns before the jet fires.
+      ctx.fillStyle = "rgba(249,115,22,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(x, GROUND_Y - 4, 20, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+    const grow = t < 100 ? (t - 80) / 20 : 1;
+    const h = 130 * grow;
+    const g = ctx.createLinearGradient(0, GROUND_Y, 0, GROUND_Y - h);
+    g.addColorStop(0, "rgba(251,191,36,0.95)");
+    g.addColorStop(1, "rgba(239,68,68,0.1)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - 16, GROUND_Y);
+    ctx.quadraticCurveTo(x, GROUND_Y - h * 1.1, x + 16, GROUND_Y);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
 /** Acorns tumbling down from the treetops. */
 function drawFallers(ctx: CanvasRenderingContext2D, state: GameState) {
   for (const f of state.fallers) {
