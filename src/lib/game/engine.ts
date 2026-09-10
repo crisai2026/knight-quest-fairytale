@@ -883,6 +883,7 @@ function updatePlayer(state: GameState) {
 
   p.onGround = false;
   for (const platform of state.platforms) {
+    if (platform.gone && platform.gone > 0) continue;
     if (rectsOverlap(p, platform)) {
       const prevY = p.y - p.vy;
       if (prevY + p.height <= platform.y + 4 && p.vy >= 0) {
