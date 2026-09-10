@@ -4463,7 +4463,9 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
 
     drawFallers(ctx, state);
     drawParticles(ctx, state);
+    drawTideWater(ctx, state);
     drawFogOverlay(ctx, state);
+    drawDarknessOverlay(ctx, state);
 
     if (state.timeLimit > 0) {
       const secs = Math.ceil(state.timeLeft / 60);
