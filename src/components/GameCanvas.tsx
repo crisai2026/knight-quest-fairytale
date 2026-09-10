@@ -6,11 +6,13 @@ import {
   handleKeyDown,
   confirmLevelStart,
   handleMapClick,
+  handleMenuClick,
+  openMenu,
   handleKeyUp,
   renderGame,
   updateGame,
 } from "@/lib/game/engine";
-import { isMusicEnabled, setMusicEnabled, unlockAudio } from "@/lib/game/audio";
+import { unlockAudio } from "@/lib/game/audio";
 import type { GameState } from "@/lib/game/types";
 
 function drawHUD(ctx: CanvasRenderingContext2D, state: GameState) {
