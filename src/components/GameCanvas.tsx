@@ -274,6 +274,7 @@ export function GameCanvas() {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH;
         const y = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT;
+        if (handleMenuClick(stateRef.current, x, y)) return;
         if (handleMapClick(stateRef.current, x, y)) return;
         confirmLevelStart(stateRef.current);
       }}
