@@ -4112,9 +4112,29 @@ function drawMenuArt(ctx: CanvasRenderingContext2D, t: number) {
   ctx.fillStyle = "#57534e";
   ctx.fillRect(140, 424, 110, 10);
 
-  // Minions circling the rock.
-  drawEnemy(ctx, introMinion("furry", 40 + Math.sin(t * 0.02) * 12, 500), 0);
-  drawEnemy(ctx, introMinion("tentacle", 300 + Math.cos(t * 0.02) * 14, 500), 0);
+  // Minions crawling up the rock toward the knight.
+  // Rock slopes: left from (90,520) to (140,430); right from (300,520) to (250,430).
+  const climb = (side: 1 | -1, phase: number) => {
+    // p runs 0 (ground) -> 1 (summit), looping; slight stumble wobble.
+    const p = (t * 0.004 + phase) % 1;
+    const wob = Math.sin(t * 0.2 + phase * 9) * 2;
+    const baseX = side === -1 ? 90 : 300;
+    const summitX = side === -1 ? 140 : 250;
+    return {
+      x: baseX + (summitX - baseX) * p + wob,
+      y: 520 + (430 - 520) * p - 34,
+      p,
+    };
+  };
+  const f = climb(-1, 0.1);
+  drawEnemy(ctx, introMinion("furry", f.x, f.y), 0);
+  const tc = climb(1, 0.55);
+  drawEnemy(ctx, introMinion("tentacle", tc.x, tc.y), 0);
+  const f2 = climb(-1, 0.7);
+  drawEnemy(ctx, introMinion("furry", f2.x, f2.y), 0);
+  const tc2 = climb(1, 0.3);
+  drawEnemy(ctx, introMinion("tentacle", tc2.x, tc2.y), 0);
+  // Winged minion hovering above, waiting its turn.
   drawEnemy(ctx, introMinion("winged", 210, 360 + Math.sin(t * 0.05) * 12), 0);
 
   // The knight, sword raised.
