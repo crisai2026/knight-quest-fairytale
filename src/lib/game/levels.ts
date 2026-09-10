@@ -35,6 +35,20 @@ export type SceneDef = {
   falling?: boolean;
   /** Seconds to reach the flag before taking a hit. */
   timeLimit?: number;
+  /** Pitch black: only a lantern circle around the knight is lit. */
+  darkness?: boolean;
+  /** The sea rises and falls across the scene. */
+  tide?: boolean;
+  /** Underwater current drags the knight sideways. */
+  current?: boolean;
+  /** Ledges collapse a moment after the knight stands on them. */
+  crumbling?: boolean;
+  /** Vine pads that fling the knight forward and up. */
+  swings?: { x: number; y: number }[];
+  /** Fire jets burst out of the floor on a rhythm. */
+  firejets?: boolean;
+  /** Scorching heat drains hunger on its own. */
+  heat?: boolean;
 };
 
 export type LevelDef = {
