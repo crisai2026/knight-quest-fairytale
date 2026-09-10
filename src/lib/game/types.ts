@@ -177,7 +177,32 @@ export type GameState = {
   /** Countdown race: frames left before the knight takes a hit (0 = no limit). */
   timeLimit: number;
   timeLeft: number;
+
+  /** Pitch black scene: only a lantern circle around the knight is lit. */
+  darkness: boolean;
+  /** Rising tide: the sea level moves up and down across the scene. */
+  tide: boolean;
+  tideY: number;
+  tideT: number;
+  /** Underwater current that drags the knight sideways. */
+  current: boolean;
+  currentTimer: number;
+  currentDir: 1 | -1;
+  /** Clouds/ledges collapse a moment after the knight stands on them. */
+  crumbling: boolean;
+  /** Vine pads that fling the knight forward and up. */
+  swings: Bounce[];
+  swingBoost: number;
+  swingDir: 1 | -1;
+  /** Fire jets bursting out of the floor on a rhythm. */
+  jets: FireJet[];
+  jetTimer: number;
+  /** Scorching heat: hunger drains on its own. */
+  heat: boolean;
 };
+
+/** A fire jet in the castle floor. */
+export type FireJet = { x: number; phase: number };
 
 export type SceneSky =
   | "clear"
@@ -188,7 +213,12 @@ export type SceneSky =
   | "golden"
   | "dusk"
   | "storm"
-  | "sunset";
+  | "sunset"
+  | "night"
+  | "sand"
+  | "ice"
+  | "ember"
+  | "deep";
 
 /** Something falling from the treetops that hurts on impact. */
 export type Faller = {
