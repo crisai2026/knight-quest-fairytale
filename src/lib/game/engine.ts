@@ -43,7 +43,7 @@ import {
   type Rect,
 } from "./village";
 import { createMinigame, drawMinigame, updateMinigame } from "./minigames";
-import { sfx, playMusic, type MusicTrack } from "./audio";
+import { sfx, playMusic, isMusicEnabled, setMusicEnabled, type MusicTrack } from "./audio";
 
 export const CANVAS_WIDTH = 800;
 export const CANVAS_HEIGHT = 600;
