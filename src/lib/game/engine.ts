@@ -4430,11 +4430,19 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: GameState) {
     for (const platform of state.platforms) {
       if (platform.y === GROUND_Y && !platform.axis) continue;
       if (platform.x - state.cameraX > CANVAS_WIDTH || platform.x + platform.width - state.cameraX < 0) continue;
+      if (platform.gone && platform.gone > 0) continue;
+      const shake = platform.crumbleT && platform.crumbleT > 0 ? (Math.random() - 0.5) * 3 : 0;
+      ctx.save();
+      ctx.translate(shake, 0);
+      if (platform.crumbleT && platform.crumbleT > 20) ctx.globalAlpha = 0.6;
       drawPlatform(ctx, platform, state.cameraX, state.biome);
+      ctx.restore();
     }
 
     const now = Date.now();
     for (const b of state.bounces) drawMushroom(ctx, b, state.cameraX, now);
+    drawSwings(ctx, state, now);
+    drawFireJets(ctx, state);
 
     for (const chest of state.chests) drawChest(ctx, chest, state.cameraX);
     for (const pail of state.pails) drawPail(ctx, pail, state.cameraX);
